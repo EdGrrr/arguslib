@@ -7,5 +7,5 @@ dependencies = [
 'numpy'
 ]
 authors = [
-{name = 'Edward gryspeerdt', email='e.gryspeerdt@imperial.ac.uk},
+{name = 'Edward Gryspeerdt', email='e.gryspeerdt@imperial.ac.uk'},
 ]
