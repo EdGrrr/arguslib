@@ -1,8 +1,60 @@
 import numpy as np
 import datetime
+import cv2
 
 # Size of the timestamp label
 ts_factor = 4
+
+
+class Video:
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.cap = cv2.VideoCapture(filepath)
+        self.n_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.time_bounds = self.get_timestamps([0, self.n_frames - 1])
+
+    def get_data_time(self, dt, return_timestamp=False):
+        n = self.estimate_frame_number(dt)
+        frame = self.get_frame(n)
+        if return_timestamp:
+            return frame, extract_timestamp(frame)
+        return frame
+
+    def get_frame(self, n):
+        if n < 0:
+            n = self.n_frames + n
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, n)
+        ret, frame = self.cap.read()
+        if not ret:
+            raise ValueError(f"Could not read frame {n} from {self.filepath}")
+
+        return frame
+
+    def get_timestamps(self, ns=None):
+        timestamps = []
+
+        if ns is None:
+            ns = range(self.n_frames)
+
+        for i in ns:
+            frame = self.get_frame(i)
+            timestamps.append(extract_timestamp(frame))
+        return tuple(timestamps)
+
+    def estimate_frame_number(self, dt):
+        if dt < self.time_bounds[0] or dt > self.time_bounds[1]:
+            raise ValueError(f"Timestamp {dt} is not in the video time bounds")
+        return np.interp(
+            dt.timestamp(),
+            [self.time_bounds[0].timestamp(), self.time_bounds[1].timestamp()],
+            [0, self.n_frames - 1],
+        )
+
+    def __len__(self):
+        return self.n_frames
+
+    def __repr__(self):
+        return f"Video({self.filepath}, {self.n_frames} frames)"
 
 
 def timestamp_image(tstamp, data, ts_factor=ts_factor, exposure=None):
@@ -40,7 +92,7 @@ def extract_exposure(image, ts_factor=ts_factor):
 
 def round_seconds(dt):
     if dt.microsecond >= 500000:
-        dt += datetime.timedelta(seconds == 1)
+        dt += datetime.timedelta(seconds=1)
     return dt.replace(microsecond=0)
 
 
