@@ -15,6 +15,7 @@ class Video:
 
     def get_data_time(self, dt, return_timestamp=False):
         n = self.estimate_frame_number(dt)
+        n = np.round(n).astype(int)
         frame = self.get_frame(n)
         if return_timestamp:
             return frame, extract_timestamp(frame)
