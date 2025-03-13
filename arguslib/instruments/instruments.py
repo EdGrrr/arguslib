@@ -138,23 +138,33 @@ class Camera(Instrument):
     def from_config(cls, campaign, camstr, **kwargs):
         import yaml
 
-        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml
-        config_file = Path("~/.config/arguslib/cameras.yml").expanduser()
-        if not config_file.exists():
-            config_file = Path("~/.arguslib/cameras.yml").expanduser()
+        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml, then /etc/arguslib/cameras.yml
+        # read from all that exists
+        config_paths = [
+            Path("~/.config/arguslib/cameras.yml").expanduser(),
+            Path("~/.arguslib/cameras.yml").expanduser(),
+            Path("/etc/arguslib/cameras.yml"),
+        ]
+        configs = []
+        for config_file in config_paths:
+            if not config_file.exists():
+                continue
+            with open(config_file, "r") as f:
+                configs.append(yaml.safe_load(f))
 
-        if not config_file.exists():
+        if not configs:
             raise FileNotFoundError("No camera configuration file found")
 
-        with open(config_file, "r") as f:
-            cameras = yaml.safe_load(f)
+        cameras = {}
+        for config in configs[::-1]:
+            cameras.update(config)
 
         camera_config = cameras[campaign][camstr]
         if camera_config["calibration_file"] is None:
             camera_config["calibration_file"] = default_calibration_file
 
         kwargs = {
-            "filename": camera_config["calibration_file"],
+            "filename": Path(camera_config["calibration_file"]).expanduser().absolute(),
             "position": Position(*camera_config["position"]),
             "rotation": camera_config["rotation"],
         } | kwargs
