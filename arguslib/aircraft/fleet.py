@@ -1,11 +1,8 @@
 import numpy as np
-import requests
-import datetime
-import time
-import geo
 import netCDF4
-import json
 import tqdm
+
+from ..misc import geo
 
 # Need some system to maintain aircraft position inforamtion
 # 4 * 60 * 24 = ~6000 slots per day per aircraft, would need to store lon, lat, alt, speed, direction along with some aircarft metadata (where required).

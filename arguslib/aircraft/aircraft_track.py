@@ -1,21 +1,28 @@
+# %%
+from pathlib import Path
 from PIL import Image
 import requests
 import numpy as np
-import math
 from io import BytesIO
 import matplotlib.pyplot as plt
-import geo
-from instruments import Camera, Radar, Position
-import statuslib
+from arguslib.misc import geo
+from arguslib.instruments import Camera, Radar, Position
 
+
+cam1_calibration_file = (
+    Path(__file__).parent.parent / "instruments/cam1_calibration.yml"
+)
 cam1_position = Position(-1.439252, 51.146668, 0.1)
 cam1 = Camera.from_filename(
-    "cam1_calibration.yml", cam1_position, rotation=10, scale_factor=3040 / 500
+    cam1_calibration_file.absolute(),
+    cam1_position,
+    rotation=10,
+    scale_factor=3040 / 500,
 )
 
-camra_position = Position(-1.43812, 51.144980, 0.13)
-camra_position_1km = Position(-1.43812, 51.144980, 1.1)
-xband_position = Position(-1.43552, 51.146055, 0.10)
+# camra_position = Position(-1.43812, 51.144980, 0.13)
+# camra_position_1km = Position(-1.43812, 51.144980, 1.1)
+# xband_position = Position(-1.43552, 51.146055, 0.10)
 
 # Get aircraft data
 response = requests.get(
@@ -145,3 +152,5 @@ radar_out["radar_ray_px"] = radar_beam_px[:, 0]
 radar_out["radar_ray_py"] = radar_beam_px[:, 1]
 
 plt.show()
+
+# %%

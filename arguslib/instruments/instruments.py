@@ -1,6 +1,11 @@
-from calibration import Projection, unit
-from geo import haversine, bearing
+from .calibration import Projection, unit
+from ..misc.geo import haversine, bearing
 import numpy as np
+from pathlib import Path
+
+default_calibration_file = (
+    Path(__file__).parent.parent / "instruments/cam1_calibration.yml"
+)
 
 
 class Position:
@@ -60,7 +65,6 @@ class Position:
         )
 
     def xyz_to_ead(self, target_x, target_y, target_z):
-        alt_diff = target_position.alt - self.alt
         target_distance = np.sqrt(target_x**2 + target_y**2 + target_z**2)
         target_elevation = np.rad2deg(
             np.arctan2(target_z, np.sqrt(target_x**2 + target_y**2))
@@ -107,7 +111,7 @@ class Instrument:
     def iead_to_xyzworld(self, elevation, azimuth, dist):
         return self.position.ead_to_xyz(*self.iead_to_gead(elevation, azimuth, dist))
 
-    def xyzworld_to_iead(target_x, target_y, target_z):
+    def xyzworld_to_iead(self, target_x, target_y, target_z):
         gead = self.position.xyz_to_ead(target_x, target_y, target_z)
         return self.gead_to_iead(*gead)
 
@@ -129,6 +133,33 @@ class Camera(Instrument):
     @classmethod
     def from_filename(cls, filename, *args, **kwargs):
         return cls(Projection.fromfile(filename), *args, **kwargs)
+
+    @classmethod
+    def from_config(cls, campaign, camstr, **kwargs):
+        import yaml
+
+        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml
+        config_file = Path("~/.config/arguslib/cameras.yml").expanduser()
+        if not config_file.exists():
+            config_file = Path("~/.arguslib/cameras.yml").expanduser()
+
+        if not config_file.exists():
+            raise FileNotFoundError("No camera configuration file found")
+
+        with open(config_file, "r") as f:
+            cameras = yaml.safe_load(f)
+
+        camera_config = cameras[campaign][camstr]
+        if camera_config["calibration_file"] is None:
+            camera_config["calibration_file"] = default_calibration_file
+
+        kwargs = {
+            "filename": camera_config["calibration_file"],
+            "position": Position(*camera_config["position"]),
+            "rotation": camera_config["rotation"],
+        } | kwargs
+        # will ignore config if kwargs contains any of the keys in camera_config
+        return cls.from_filename(**kwargs)
 
     # view here is in the camera space - we need to get the xyz in camera projection, not the world projection
     def target_pix(self, target_position: Position):

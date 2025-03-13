@@ -1,14 +1,5 @@
 import numpy as np
 
-with open("cam1_calibration.yml") as f:
-    import yaml
-
-    calibration = yaml.load(f, Loader=yaml.SafeLoader)
-
-poly_rz = np.array(calibration["poly_radius_to_z"], dtype=np.float32)
-poly_thetar = np.array(calibration["poly_incident_angle_to_radius"])
-principal_point = np.array(calibration["principal_point"])
-
 
 def polynom(x, degree: int):
     """
@@ -99,19 +90,3 @@ class Projection:
         return project_poly_thetar(
             v_view, self.poly_thetar, self.principal_point, normed
         )
-
-
-# projection = Projection(poly_thetar, poly_rz, principal_point)
-# landmark_p = np.array((2034, 2788))
-# landmark_v = projection.image_to_view(landmark_p, True)
-# print(landmark_v)
-# landmark_v = projection.image_to_view(np.array([landmark_p, landmark_p]), True)
-# print(landmark_v)
-
-# print(landmark_p)
-# landmark_pn = projection.view_to_image(landmark_v, True)
-# print(landmark_pn)
-
-# p2 = Projection.fromfile('cam1_calibration.yml')
-# landmark_v = p2.image_to_view(landmark_p, True)
-# print(landmark_v)
