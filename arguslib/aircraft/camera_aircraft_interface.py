@@ -45,16 +45,16 @@ class CameraAircraftInterface:
     def get_image(self, time):
         return self.camera_data.get_data_time(time)
 
-    def show(self, time, ax=None, tlen=3600):
+    def show(self, time, ax=None, tlen=3600, color_icao=False):
         if ax is None:
             fig, ax = plt.subplots(1, 1, figsize=(10, 10))
         img = self.get_image(time)
         ax.imshow(img[:, :, ::-1], origin="lower")
         plot_range_rings(self.camera, ax=ax)
-        self.plot_trails(time, ax=ax, tlen=tlen)
+        self.plot_trails(time, ax=ax, tlen=tlen, color_icao=color_icao)
         return ax
 
-    def plot_trails(self, time, ax, **kwargs):
+    def plot_trails(self, time, ax, color_icao=False, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         trail_latlons = self.get_trails(time, **kwargs)
         trail_alts_geom = self.fleet.get_data(time, "alt_geom", tlen=kwargs["tlen"])
@@ -93,13 +93,10 @@ class CameraAircraftInterface:
                     for lat, lon, alt_m in zip(lats, lons, alts_m)
                 ]
             )
-            ax.plot(pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], c="r", lw=2)
+            c = "r" if not color_icao else f"#{acft}"
+            ax.plot(pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], c=c, lw=1)
             if dists[-1] < 90:
-                ax.plot(
-                    pl_track.T[0][-1],
-                    pl_track.T[1][-1],
-                    "ro",
-                )
+                ax.plot(pl_track.T[0][-1], pl_track.T[1][-1], "ro", markersize=2)
 
 
 # %%
