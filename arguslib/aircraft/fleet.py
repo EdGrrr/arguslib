@@ -62,7 +62,14 @@ class AircraftPos:
             for vn in vname
         }
 
-    def get_trail(self, dtime, tlen=2 * 60 * 60, spread_velocity=-1, wind_filter=-1):
+    def get_trail(
+        self,
+        dtime,
+        tlen=2 * 60 * 60,
+        spread_velocity=-1,
+        wind_filter=-1,
+        include_time=False,
+    ):
         # The advected flight locations (based on the aircraft
         # measured windspeed for some time after dtime). If
         # 'spread_velocity' is set positive (in m/s), this also
@@ -73,15 +80,17 @@ class AircraftPos:
         length = (tlen / self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
-        times = (daysec - self.times)[startind:index]
+        times = (daysec - self.times)[
+            startind:index
+        ]  # Time since the aircraft passed this point
 
         gs = self.positions[startind:index, self.variables.index("gs")]
         track = self.positions[startind:index, self.variables.index("track")]
         ws = self.positions[startind:index, self.variables.index("ws")]
         wd = self.positions[startind:index, self.variables.index("wd")]
         wind_u, wind_v = (
-            0.51444 * ws * np.sin(np.deg2rad(wd)),
-            0.51444 * ws * np.cos(np.deg2rad(wd)),
+            -0.51444 * ws * np.sin(np.deg2rad(wd)),
+            -0.51444 * ws * np.cos(np.deg2rad(wd)),
         )
         if wind_filter > 0:
 
@@ -109,7 +118,12 @@ class AircraftPos:
         lon = self.positions[startind:index, self.variables.index("lon")]
         lat = self.positions[startind:index, self.variables.index("lat")]
 
-        track_pos = np.array(geo.xy_offset_to_ll(lon, lat, *track_offset_km))
+        if not include_time:
+            track_pos = np.array(geo.xy_offset_to_ll(lon, lat, *track_offset_km))
+        else:
+            track_pos = np.concatenate(
+                [geo.xy_offset_to_ll(lon, lat, *track_offset_km), np.atleast_2d(times)]
+            )
 
         if spread_velocity > 0:
             # Calculate the cross-track spreading of the trail
@@ -209,9 +223,20 @@ class Aircraft:
     def get_track(self, dtime, tlen=2 * 60 * 60):
         return self.pos.get_track(dtime, tlen)
 
-    def get_trail(self, dtime, tlen=2 * 60 * 60, spread_velocity=-1, wind_filter=-1):
+    def get_trail(
+        self,
+        dtime,
+        tlen=2 * 60 * 60,
+        spread_velocity=-1,
+        wind_filter=-1,
+        include_time=False,
+    ):
         return self.pos.get_trail(
-            dtime, tlen, spread_velocity=spread_velocity, wind_filter=wind_filter
+            dtime,
+            tlen,
+            spread_velocity=spread_velocity,
+            wind_filter=wind_filter,
+            include_time=include_time,
         )
 
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
@@ -297,7 +322,7 @@ class Fleet:
                 acft_list.append(acft)
                 acft_types[acft] = atype
 
-        self.aircraft = {}
+        self.aircraft: dict[str, Aircraft] = {}
         with netCDF4.Dataset(filename + ".nc") as ncdf:
             var_data = []
             for vind, vname in enumerate(self.variables):
@@ -331,7 +356,14 @@ class Fleet:
             tracks[ac] = self.aircraft[ac].get_track(dtime, tlen)
         return tracks
 
-    def get_trails(self, dtime, tlen=2 * 60 * 60, spread_velocity=-1, wind_filter=-1):
+    def get_trails(
+        self,
+        dtime,
+        tlen=2 * 60 * 60,
+        spread_velocity=-1,
+        wind_filter=-1,
+        include_time=False,
+    ):
         """Returns trail position for now and every previous 15 sec until tlen (in min)
 
         Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
@@ -339,7 +371,11 @@ class Fleet:
         trails = {}
         for ac in self.aircraft.keys():
             trails[ac] = self.aircraft[ac].get_trail(
-                dtime, tlen, spread_velocity=spread_velocity, wind_filter=wind_filter
+                dtime,
+                tlen,
+                spread_velocity=spread_velocity,
+                wind_filter=wind_filter,
+                include_time=include_time,
             )
         return trails
 
