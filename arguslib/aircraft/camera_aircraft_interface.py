@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from arguslib.arguslib.misc.plotting import plot_range_rings
+from ..misc.plotting import plot_range_rings
 
 from ..instruments import Camera, Position
 from .fleet import Fleet

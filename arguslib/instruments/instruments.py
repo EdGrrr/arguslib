@@ -135,7 +135,9 @@ class Camera(Instrument):
         return cls(Projection.fromfile(filename), *args, **kwargs)
 
     @classmethod
-    def from_config(cls, campaign, camstr, **kwargs):
+    def from_config(
+        cls, campaign, camstr, **kwargs
+    ):  # TODO: make from_config a method of Instrument...?
         import yaml
 
         # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml, then /etc/arguslib/cameras.yml
@@ -191,17 +193,13 @@ class Camera(Instrument):
         )
 
     def radar_beam(self, target_elevation, target_azimuth, radar):
-        output = []
-        for beam_r in range(0, 361, 30):
-            output.append(
-                self.el_azi_to_pixel(
-                    target_elevation + radar.beamwidth * np.cos(np.deg2rad(beam_r)),
-                    target_azimuth + radar.beamwidth * np.sin(np.deg2rad(beam_r)),
-                    self.ppx,
-                    self.ppy,
-                )
-            )
-        return np.array(output)
+        positions = radar.beam(target_elevation, target_azimuth, [1, 10])
+        pix = (
+            np.array([self.target_pix(k) for k in positions.reshape(-1)])
+            .reshape(2, -1, 2)
+            .squeeze()
+        )  # -1 and squeeze allows for either 5 or 1 position depending on radar beamwidth
+        return pix
 
 
 class Radar(Instrument):
@@ -246,3 +244,40 @@ class Radar(Instrument):
                     for radar_dist in radar_distances
                 ]
             )
+
+    @classmethod
+    def from_config(
+        cls, campaign, **kwargs
+    ):  # TODO: make from_config a method of Instrument...?
+        import yaml
+
+        # look for a config file - try ~/.config/arguslib/radars.yml, then ~/.arguslib/radars.yml, then /etc/arguslib/radars.yml
+        # read from all that exists
+        config_paths = [
+            Path("~/.config/arguslib/radars.yml").expanduser(),
+            Path("~/.arguslib/radars.yml").expanduser(),
+            Path("/etc/arguslib/radars.yml"),
+        ]
+        configs = []
+        for config_file in config_paths:
+            if not config_file.exists():
+                continue
+            with open(config_file, "r") as f:
+                configs.append(yaml.safe_load(f))
+
+        if not configs:
+            raise FileNotFoundError("No radar configuration file found")
+
+        radars = {}
+        for config in configs[::-1]:
+            radars.update(config)
+
+        radar_config = radars[campaign]
+
+        kwargs = {
+            "beamwidth": radar_config["beamwidth"],
+            "position": Position(*radar_config["position"]),
+            "rotation": radar_config["rotation"],
+        } | kwargs
+        # will ignore config if kwargs contains any of the keys in camera_config
+        return cls(**kwargs)
