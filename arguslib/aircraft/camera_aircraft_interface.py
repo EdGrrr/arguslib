@@ -1,7 +1,8 @@
+from cv2 import transform
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..misc.plotting import plot_range_rings
+from ..misc.plotting import get_pixel_transform, make_camera_axes, plot_range_rings
 
 from ..instruments import Camera, Position
 from .fleet import Fleet
@@ -12,7 +13,7 @@ from ..misc import geo
 class CameraAircraftInterface:
     def __init__(self, camera: Camera, fleet: Fleet, camera_data: CameraData):
         self.camera = camera
-        self.fleet = fleet
+        self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.
         self.camera_data = camera_data
 
     @classmethod
@@ -47,19 +48,26 @@ class CameraAircraftInterface:
 
     def show(self, time, ax=None, tlen=3600, color_icao=False):
         if ax is None:
-            fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+            ax = make_camera_axes(self.camera)
+
+        transPixel = get_pixel_transform(self.camera, ax)
         img = self.get_image(time)
-        ax.imshow(img[:, :, ::-1], origin="lower")
-        plot_range_rings(self.camera, ax=ax)
-        self.plot_trails(time, ax=ax, tlen=tlen, color_icao=color_icao)
+        ax.imshow(img[:, :, ::-1], transform=transPixel)
+        plot_range_rings(self.camera, ax=ax, transform=transPixel)
+        self.plot_trails(
+            time, ax=ax, tlen=tlen, color_icao=color_icao, transform=transPixel
+        )
         return ax
 
-    def plot_trails(self, time, ax, color_icao=False, **kwargs):
+    def plot_trails(self, time, ax, color_icao=False, transform=None, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         trail_latlons = self.get_trails(time, **kwargs)
         trail_alts_geom = self.fleet.get_data(time, "alt_geom", tlen=kwargs["tlen"])
 
         current_data = self.fleet.get_current(time, ["lon", "lat", "alt_geom"])
+
+        if transform is None:
+            transform = ax.transData
 
         for acft in trail_latlons.keys():
             if (
@@ -89,14 +97,28 @@ class CameraAircraftInterface:
 
             pl_track = np.array(
                 [
-                    self.camera.target_pix(Position(lon, lat, alt_m))
+                    self.camera.target_pix(
+                        Position(lon, lat, alt_m)
+                    )  # TODO: this is somehow changing/is wrong
                     for lat, lon, alt_m in zip(lats, lons, alts_m)
                 ]
             )
             c = "r" if not color_icao else f"#{acft}"
-            ax.plot(pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], c=c, lw=1)
+            ax.plot(
+                pl_track.T[0][dists < 90],
+                pl_track.T[1][dists < 90],
+                c=c,
+                lw=1,
+                transform=transform,
+            )
             if dists[-1] < 90:
-                ax.plot(pl_track.T[0][-1], pl_track.T[1][-1], "ro", markersize=2)
+                ax.plot(
+                    pl_track.T[0][-1],
+                    pl_track.T[1][-1],
+                    "ro",
+                    markersize=2,
+                    transform=transform,
+                )
 
 
 # %%
