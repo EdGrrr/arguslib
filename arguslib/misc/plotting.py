@@ -1,3 +1,4 @@
+from os import replace
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -85,10 +86,23 @@ def get_pixel_transform(camera, ax, lr_flip=True):
     return transPixel
 
 
-def make_camera_axes(camera, fig=None, pos=111, theta_behaviour="bearing"):
+def make_camera_axes(
+    camera, theta_behaviour="bearing", fig=None, pos=111, replace_ax=None
+):
     if fig is None:
         fig = plt.figure()
-    ax = fig.add_subplot(pos, projection="polar")
+
+    if replace_ax is not None:
+        fig = replace_ax.figure
+        pos = replace_ax.get_position()
+        replace_ax.remove()
+
+        ax = fig.add_axes(
+            pos,
+            projection="polar",
+        )
+    else:
+        ax = fig.add_subplot(pos, projection="polar")
 
     if theta_behaviour == "pixels":
         ax.set_theta_offset(np.deg2rad(camera.rotation))
