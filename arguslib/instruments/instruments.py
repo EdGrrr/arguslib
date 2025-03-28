@@ -1,3 +1,11 @@
+from typing import override
+
+from arguslib.arguslib.misc.plotting import (
+    get_pixel_transform,
+    make_camera_axes,
+    plot_range_rings,
+    plot_rhi_beam,
+)
 from .calibration import Projection, unit
 from ..misc.geo import haversine, bearing
 import numpy as np
@@ -82,9 +90,12 @@ class Position:
 
 
 class Instrument:
-    def __init__(self, position: Position, rotation: list):
+    def __init__(self, position: Position, rotation: list, **attrs):
         self.position = position
         self.rotation = rotation
+
+        self.attrs = attrs
+        self.data_loader = None
 
     # lla and xyz are functions of the instrument position, rather than the instrument itself
     # ead on the other hand is an instrument property, as it depends on the instrument rotation.
@@ -114,6 +125,24 @@ class Instrument:
     def xyzworld_to_iead(self, target_x, target_y, target_z):
         gead = self.position.xyz_to_ead(target_x, target_y, target_z)
         return self.gead_to_iead(*gead)
+
+    def initialise_data_loader(self):
+        raise NotImplementedError(
+            "Data loader initialisation not implemented for this instrument"
+        )
+
+    def get_data_time(self, dt):
+        if self.data_loader is None:
+            self.initialise_data_loader()
+        return self.data_loader.get_data_time(dt)
+
+    def show(self, dt, ax=None, **kwargs):
+        if self.data_loader is None:
+            self.initialise_data_loader()
+        return self._show(dt, ax=ax, **kwargs)
+
+    def _show(self, dt, ax=None, **kwargs):
+        raise NotImplementedError("Visualisation not implemented for this instrument")
 
 
 class Camera(Instrument):
@@ -171,6 +200,8 @@ class Camera(Instrument):
             "rotation": camera_config["rotation"],
         } | kwargs
         # will ignore config if kwargs contains any of the keys in camera_config
+
+        kwargs |= {"campaign": campaign, "camstr": camstr}
         return cls.from_filename(**kwargs)
 
     # view here is in the camera space - we need to get the xyz in camera projection, not the world projection
@@ -200,6 +231,29 @@ class Camera(Instrument):
             .squeeze()
         )  # -1 and squeeze allows for either 5 or 1 position depending on radar beamwidth
         return pix
+
+    @override
+    def initialise_data_loader(self):
+        from ..video import CameraData
+
+        self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
+
+    @override
+    def _show(self, dt, ax=None, **kwargs):
+        if ax is None:
+            ax = make_camera_axes(self, **kwargs)
+
+        # if polar axes, assume it's a camera axes
+        if hasattr(ax, "set_theta_zero_location"):
+            transform = get_pixel_transform(self, ax)
+        else:
+            transform = ax.transData
+
+        img = self.get_data_time(dt)
+        ax.imshow(img[:, :, ::-1], transform=transform)
+        plot_range_rings(self, ax=ax, transform=transform)
+        ax.set_rticks([])
+        return ax
 
 
 class Radar(Instrument):
@@ -280,4 +334,36 @@ class Radar(Instrument):
             "rotation": radar_config["rotation"],
         } | kwargs
         # will ignore config if kwargs contains any of the keys in camera_config
+
+        kwargs |= {"campaign": campaign}
+
         return cls(**kwargs)
+
+    @override
+    def initialise_data_loader(self):
+        from ..radar import RadarData
+
+        self.data_loader = RadarData(self.attrs["campaign"], "rhi")
+
+    @override
+    def _show(self, dt, var, ax=None, **kwargs):
+        import pyart
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            _, ax = plt.subplots()
+        radar = self.data_loader.get_pyart_radar(dt)
+        display = pyart.graph.RadarDisplay(radar)
+
+        kwargs = {
+            "vmin": -60,
+            "vmax": 40,
+        } | kwargs
+        display.plot(var, ax=ax, **kwargs)
+        ax.set_aspect("equal")
+
+        elevs = radar.elevation["data"]
+        plot_rhi_beam(ax, elevs[0])
+        plot_rhi_beam(ax, elevs[-1])
+
+        return ax

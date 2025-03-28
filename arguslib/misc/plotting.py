@@ -1,10 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from arguslib.arguslib.instruments.instruments import Camera
 
-
-def plot_range_rings(camera: Camera, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
+def plot_range_rings(camera, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
@@ -23,12 +21,12 @@ def plot_range_rings(camera: Camera, ranges=[10, 20, 30], alt=10, ax=None, **kwa
     return range_out
 
 
-def plot_beam(camera: Camera, radar, elev_azi, ax=None, markers=True, **kwargs):
+def plot_beam(camera, radar, elev_azi, ax=None, markers=True, **kwargs):
     if ax is None:
         ax = plt.gca()
 
     radar_elev, radar_azimuth = elev_azi
-    dists = np.logspace(-1, np.log10(15), 100)
+    dists = np.logspace(-2, np.log10(15), 100)
     radar_beam_positions = radar.beam(radar_elev, radar_azimuth, dists)
     radar_beam_pix = np.array(
         [camera.target_pix(pt) for pt in radar_beam_positions.reshape(-1)]
@@ -53,7 +51,7 @@ def plot_beam(camera: Camera, radar, elev_azi, ax=None, markers=True, **kwargs):
     return ax
 
 
-def get_pixel_transform(camera, ax):
+def get_pixel_transform(camera, ax, lr_flip=True):
     from matplotlib.transforms import Affine2D
 
     if ax.name != "polar":
@@ -69,15 +67,51 @@ def get_pixel_transform(camera, ax):
         Affine2D()
         .translate(*translation_px)
         .scale(1 / img_size_px, 1 / img_size_px)
-        .rotate_around(0.5, 0.5, ax.get_theta_offset())
-        + ax.transAxes
+        .rotate_deg_around(0.5, 0.5, -1 * camera.rotation)
     )
+
+    if lr_flip:
+        transPixel = transPixel + Affine2D().scale(-1, 1).translate(1, 0)
+    elif (ax.get_theta_direction() == np.pi / 2) and (ax.get_theta_direction() == -1):
+        # bearing axes, so should have been flipped
+        raise print * (
+            "Warning: bearing axes require flipped projection to be accurate"
+        )
+
+    transPixel = transPixel + ax.transAxes
     return transPixel
 
 
-def make_camera_axes(camera, fig=None, pos=111):
+def make_camera_axes(camera, fig=None, pos=111, theta_behaviour="bearing"):
     if fig is None:
         fig = plt.figure()
     ax = fig.add_subplot(pos, projection="polar")
-    ax.set_theta_offset(-1 * np.deg2rad(camera.rotation))
+
+    if theta_behaviour == "pixels":
+        ax.set_theta_offset(-1 * np.deg2rad(camera.rotation))
+    elif theta_behaviour == "bearing":
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
     return ax
+
+
+def plot_rhi_beam(ax, elevation, **kwargs):
+    # plot the sweep extremes
+    xlims = ax.get_xlim()
+    ylims = ax.get_ylim()
+
+    # plot start
+    endpoint_start_x = xlims[1], xlims[1] * np.tan(np.deg2rad(elevation))
+    endpoint_start_y = (
+        ylims[1] * np.tan(np.deg2rad(90 - elevation)),
+        ylims[1],
+    )
+    endpoint = (
+        endpoint_start_y
+        if endpoint_start_x[1] > endpoint_start_y[0]
+        else endpoint_start_x
+    )
+    ax.plot([0, endpoint[0]], [0, endpoint[1]], c="limegreen", lw=0.7)
+
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
