@@ -240,19 +240,42 @@ class Camera(Instrument):
 
     @override
     def _show(self, dt, ax=None, **kwargs):
-        if ax is None:
-            ax = make_camera_axes(self, **kwargs)
+        defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
-        # if polar axes, assume it's a camera axes
-        if hasattr(ax, "set_theta_zero_location"):
-            transform = get_pixel_transform(self, ax)
+        if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
+            # if theta_behaviour is set, assume lr_flip should be false, unless it's bearing
+            if kwargs["theta_behaviour"] != "bearing":
+                defaults["lr_flip"] = False
+
+        if "lr_flip" in kwargs and "theta_behaviour" not in kwargs:
+            # if lr_flip is set, but we are inferring theta_behaviour, assume it's bearing if flipped, ordinal aligned if not flipped
+            if kwargs["lr_flip"]:
+                defaults["theta_behaviour"] = "bearing"
+            else:
+                defaults["theta_behaviour"] = "unflipped_ordinal_aligned"
+
+        kwargs = defaults | kwargs
+
+        lr_flip = kwargs.pop("lr_flip")
+        theta_behaviour = kwargs.pop("theta_behaviour")
+
+        if ax is None:
+            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, **kwargs)
+
+        is_polar = hasattr(ax, "set_theta_zero_location")
+
+        # if polar axes, assume it's a camera axes with
+        if is_polar:
+            transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
         else:
             transform = ax.transData
 
         img = self.get_data_time(dt)
-        ax.imshow(img[:, :, ::-1], transform=transform)
+        ax.imshow(img[:, :, ::-1], origin="upper", transform=transform)
         plot_range_rings(self, ax=ax, transform=transform)
-        ax.set_rticks([])
+
+        if is_polar:
+            ax.set_rticks([])
         return ax
 
 

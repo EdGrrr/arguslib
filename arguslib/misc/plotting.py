@@ -70,7 +70,10 @@ def get_pixel_transform(camera, ax, lr_flip=True):
         .rotate_deg_around(0.5, 0.5, -1 * camera.rotation)
     )
 
-    if lr_flip:
+    if (
+        not lr_flip
+    ):  # can't figure out why this needs doing to gett the unflipped version.
+        # seems to be that the default is to flip it for polar plots??
         transPixel = transPixel + Affine2D().scale(-1, 1).translate(1, 0)
     elif (ax.get_theta_direction() == np.pi / 2) and (ax.get_theta_direction() == -1):
         # bearing axes, so should have been flipped
@@ -88,10 +91,17 @@ def make_camera_axes(camera, fig=None, pos=111, theta_behaviour="bearing"):
     ax = fig.add_subplot(pos, projection="polar")
 
     if theta_behaviour == "pixels":
-        ax.set_theta_offset(-1 * np.deg2rad(camera.rotation))
+        ax.set_theta_offset(np.deg2rad(camera.rotation))
     elif theta_behaviour == "bearing":
         ax.set_theta_offset(np.pi / 2)
         ax.set_theta_direction(-1)
+    elif theta_behaviour == "unflipped_ordinal_aligned":
+        ax.set_theta_offset(np.pi / 2)
+        # ax.set_theta_direction(-1)
+    else:
+        raise ValueError(
+            "theta_behaviour must be one of 'pixels', 'bearing', or 'unflipped_ordinal_aligned'"
+        )
     return ax
 
 
