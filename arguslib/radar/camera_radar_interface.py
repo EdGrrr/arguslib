@@ -22,7 +22,7 @@ class CameraRadarInterface:
             Radar.from_config(campaign),
             Camera.from_config(campaign, camstr),
             CameraData(campaign, camstr),
-            RadarData("rhi"),
+            RadarData(campaign, "rhi"),
         )
 
     def show_camera(self, dt, ax=None, **kwargs):

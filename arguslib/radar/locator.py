@@ -5,8 +5,8 @@ import pyart
 from csat2.locator import FileLocator
 
 # TODO: could update these to discriminate the specific radar... Probably a job for when we put the search paths in the config.
-vpt_filename_format = "/disk1/Data/COBALT/radar/L1/{year}{mon:0>2}{day:0>2}/ncas-mobile-ka-band-radar-1_cao_{year}{mon:0>2}{day:0>2}-{hour:0>2}**_vpt_l1_v1.0.0.nc"
-rhi_filename_format = "/disk1/Data/COBALT/radar/L1/{year}{mon:0>2}{day:0>2}/ncas-mobile-ka-band-radar-1_cao_{year}{mon:0>2}{day:0>2}-{hour:0>2}**_rhi_l1_v1.0.0.nc"
+vpt_filename_format = "/disk1/Data/{campaign}/radar/L1/{year}{mon:0>2}{day:0>2}/ncas-mobile-ka-band-radar-1_cao_{year}{mon:0>2}{day:0>2}-{hour:0>2}**_vpt_l1_v1.0.0.nc"
+rhi_filename_format = "/disk1/Data/{campaign}/radar/L1/{year}{mon:0>2}{day:0>2}/ncas-mobile-ka-band-radar-1_cao_{year}{mon:0>2}{day:0>2}-{hour:0>2}**_rhi_l1_v1.0.0.nc"
 
 
 def initialise_locator():
@@ -18,7 +18,8 @@ def initialise_locator():
 
 
 class RadarData:
-    def __init__(self, scan_type="rhi"):
+    def __init__(self, campaign, scan_type="rhi"):
+        self.campaign = campaign
         self.scan_type = scan_type
         self.locator = initialise_locator()
 
@@ -79,6 +80,7 @@ class RadarData:
         files = self.locator.search(
             "ARGUS",
             self.scan_type,
+            campaign=self.campaign,
             year=dt.year,
             mon=dt.month,
             day=dt.day,
