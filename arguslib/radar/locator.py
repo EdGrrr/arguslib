@@ -62,14 +62,14 @@ class RadarData:
 
         return self.radar_data
 
-    def plot(self, dt, var, ax=None, **kwargs):
-        if ax is None:
-            _, ax = plt.subplots()
-        radar = self.get_pyart_radar(dt)
-        display = pyart.graph.RadarDisplay(radar)
-        display.plot(var, ax=ax, **kwargs)
-        ax.set_aspect("equal")
-        return ax
+    # def plot(self, dt, var, ax=None, **kwargs):
+    #     if ax is None:
+    #         _, ax = plt.subplots()
+    #     radar = self.get_pyart_radar(dt)
+    #     display = pyart.graph.RadarDisplay(radar)
+    #     display.plot(var, ax=ax, **kwargs)
+    #     ax.set_aspect("equal")
+    #     return ax
 
     def get_filepath(self, dt):
         if self.scan_type == "vpt":

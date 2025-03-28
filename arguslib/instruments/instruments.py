@@ -270,9 +270,11 @@ class Camera(Instrument):
         else:
             transform = ax.transData
 
+        ax.transData = transform
+
         img = self.get_data_time(dt)
-        ax.imshow(img[:, :, ::-1], origin="upper", transform=transform)
-        plot_range_rings(self, ax=ax, transform=transform)
+        ax.imshow(img[:, :, ::-1], origin="upper")
+        plot_range_rings(self, ax=ax)
 
         if is_polar:
             ax.set_rticks([])
