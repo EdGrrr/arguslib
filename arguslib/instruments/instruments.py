@@ -1,10 +1,12 @@
 from typing import override
 
+from matplotlib.pylab import f
+
 from arguslib.arguslib.misc.plotting import (
     get_pixel_transform,
     make_camera_axes,
     plot_range_rings,
-    plot_rhi_beam,
+    plot_beam,
 )
 from .calibration import Projection, unit
 from ..misc.geo import haversine, bearing
@@ -144,6 +146,11 @@ class Instrument:
     def _show(self, dt, ax=None, **kwargs):
         raise NotImplementedError("Visualisation not implemented for this instrument")
 
+    def annotate_positions(self, positions: list[Position], ax, **kwargs):
+        raise NotImplementedError(
+            "Annotating positions not implemented for this instrument"
+        )
+
 
 class Camera(Instrument):
     def __init__(
@@ -280,6 +287,37 @@ class Camera(Instrument):
             ax.set_rticks([])
         return ax
 
+    def annotate_positions(
+        self, positions, ax, *args, dt=None, plotting_method=None, **kwargs
+    ):
+        # TODO: this should take dt into account, mostly because the calibration may change for the same camera at different times...
+        lats = [p.lat for p in positions]
+        lons = [p.lon for p in positions]
+
+        dists = np.array(
+            [
+                haversine(self.position.lon, self.position.lat, lon, lat)
+                for lon, lat in zip(lons, lats)
+            ]
+        )
+
+        if (dists[~np.isnan(dists)] > 90).all():
+            return
+
+        pl_track = np.array([self.target_pix(p) for p in positions])
+        if plotting_method is None:
+            ax.plot(
+                pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], *args, **kwargs
+            )
+        else:
+            plotting_method(
+                pl_track.T[0][dists < 90],
+                pl_track.T[1][dists < 90],
+                *args,
+                **kwargs,
+            )
+        return ax
+
 
 class Radar(Instrument):
     def __init__(self, beamwidth, *args, **kwargs):
@@ -387,8 +425,49 @@ class Radar(Instrument):
         display.plot(var, ax=ax, **kwargs)
         ax.set_aspect("equal")
 
-        elevs = radar.elevation["data"]
-        plot_rhi_beam(ax, elevs[0])
-        plot_rhi_beam(ax, elevs[-1])
+        # elevs = radar.elevation["data"]
+
+        elev_azi_start = radar.elevation["data"][0], radar.azimuth["data"][0]
+        elev_azi_end = radar.elevation["data"][-1], radar.azimuth["data"][-1]
+        plot_beam(self, self, elev_azi_start, dt=dt, ax=ax, **kwargs)
+        plot_beam(self, self, elev_azi_end, dt=dt, ax=ax, **kwargs)
+        # plot_rhi_beam(ax, elevs[0])
+        # plot_rhi_beam(ax, elevs[-1])
 
         return ax
+
+    def annotate_positions(
+        self, positions, ax, *args, dt=None, plotting_method=None, **kwargs
+    ):
+        # project the positions to the xy plane...
+
+        if dt is None:
+            raise ValueError(
+                "dt must be provided for radar positions to get the azimuth"
+            )
+
+        eads = [self.target_iead(p) for p in positions]
+
+        elevs = np.array([ead[0] for ead in eads])
+        azimuths = np.array([ead[1] for ead in eads])
+        dists = np.array([ead[2] for ead in eads])
+
+        azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
+
+        print(azimuth, azimuths)
+
+        theta_seps = azimuths - azimuth
+        offsets = dists * np.sin(
+            np.deg2rad(theta_seps)
+        )  # dist btwn object and radar plane
+        # filtered to be less than 5km
+
+        ys = dists * np.sin(np.deg2rad(elevs))
+        xs = dists * np.cos(np.deg2rad(elevs)) * np.cos(np.deg2rad(theta_seps))
+
+        if plotting_method is None:
+            ax.plot(xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs)
+        else:
+            plotting_method(
+                xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs
+            )

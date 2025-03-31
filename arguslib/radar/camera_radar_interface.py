@@ -38,8 +38,8 @@ class CameraRadarInterface:
         elev_azi_end = radar.elevation["data"][-1], radar.azimuth["data"][-1]
 
         kwargs = {"c": "limegreen", "lw": 0.7} | kwargs
-        plot_beam(self.camera, self.radar, elev_azi_start, ax=ax, **kwargs)
-        plot_beam(self.camera, self.radar, elev_azi_end, ax=ax, **kwargs)
+        plot_beam(self.camera, self.radar, elev_azi_start, dt=dt, ax=ax, **kwargs)
+        plot_beam(self.camera, self.radar, elev_azi_end, dt=dt, ax=ax, **kwargs)
 
         ax.legend()
         return ax

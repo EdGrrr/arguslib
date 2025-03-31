@@ -43,7 +43,7 @@ class CameraAircraftInterface:
         self.plot_trails(time, ax=ax, tlen=tlen, color_icao=color_icao)
         return ax
 
-    def plot_trails(self, time, ax, color_icao=False, **kwargs):
+    def plot_trails(self, time, ax, color_icao=True, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         trail_latlons = self.get_trails(time, **kwargs)
         trail_alts_geom = self.fleet.get_data(time, "alt_geom", tlen=kwargs["tlen"])
@@ -69,35 +69,18 @@ class CameraAircraftInterface:
                 )
 
             # TODO: I want a function on Camera that will take a lon, lat, alt_m (or iterables of them) and return the pixel coordinates
-            dists = geo.haversine(
-                self.camera.position.lon, self.camera.position.lat, lons, lats
+            positions = [
+                Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_m)
+            ]
+            self.camera.annotate_positions(
+                positions, ax=ax, color="r" if not color_icao else f"#{acft}", lw=1
             )
-
-            if (dists[~np.isnan(dists)] > 90).all():
-                continue
-
-            pl_track = np.array(
-                [
-                    self.camera.target_pix(
-                        Position(lon, lat, alt_m)
-                    )  # TODO: this is somehow changing/is wrong
-                    for lat, lon, alt_m in zip(lats, lons, alts_m)
-                ]
+            self.camera.annotate_positions(
+                positions[-1:],
+                ax,
+                "ro",
+                markersize=2,
             )
-            c = "r" if not color_icao else f"#{acft}"
-            ax.plot(
-                pl_track.T[0][dists < 90],
-                pl_track.T[1][dists < 90],
-                c=c,
-                lw=1,
-            )
-            if dists[-1] < 90:
-                ax.plot(
-                    pl_track.T[0][-1],
-                    pl_track.T[1][-1],
-                    "ro",
-                    markersize=2,
-                )
 
 
 # %%

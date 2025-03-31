@@ -22,32 +22,43 @@ def plot_range_rings(camera, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
     return range_out
 
 
-def plot_beam(camera, radar, elev_azi, ax=None, markers=True, **kwargs):
+def plot_beam(
+    plotting_instrument, radar, elev_azi, dt=None, ax=None, markers=True, **kwargs
+):
     if ax is None:
         ax = plt.gca()
 
     radar_elev, radar_azimuth = elev_azi
     dists = np.logspace(-2, np.log10(15), 100)
     radar_beam_positions = radar.beam(radar_elev, radar_azimuth, dists)
-    radar_beam_pix = np.array(
-        [camera.target_pix(pt) for pt in radar_beam_positions.reshape(-1)]
-    ).reshape(-1, 5, 2)
 
-    kwargs = {
-        "label": f"{radar_elev:.1f}\\textdegree~elevation; {radar_azimuth:.1f}\\textdegree~azimuth",
-        **kwargs,
-    }
-    ax.plot(radar_beam_pix[:, 0, 0], radar_beam_pix[:, 0, 1], **kwargs)
-
-    plot_range_rings(camera, ax=ax)
+    plotting_instrument.annotate_positions(
+        radar_beam_positions[:, 0],
+        dt=dt,
+        ax=ax,
+        markersize=1,
+        color="limegreen",
+        lw=0.7,
+        label=f"elev={radar_elev:.1f}\\textdegree, az={radar_azimuth:.1f}\\textdegree",
+    )
 
     if markers:
         dists = [0, 2, 5, 10, 15]
         for d in dists:
-            pt = radar.beam(radar_elev, radar_azimuth, [d])[0, 0]
-            pix = camera.target_pix(pt)
-            ax.plot(pix[0], pix[1], "ro", markersize=2)
-            ax.text(pix[0] + 30, pix[1], f"\\qquad{d:.1f} km", fontsize=4, color="red")
+            pt = radar.beam(radar_elev, radar_azimuth, [d])
+            plotting_instrument.annotate_positions(
+                pt[:, 0], ax, "ro", dt=dt, markersize=2
+            )
+
+            plotting_instrument.annotate_positions(
+                pt[:, 0],
+                ax,
+                f"---{d:.1f} km",
+                dt=dt,
+                fontsize=4,
+                color="red",
+                plotting_method=ax.text,
+            )
 
     return ax
 
@@ -117,25 +128,3 @@ def make_camera_axes(
             "theta_behaviour must be one of 'pixels', 'bearing', or 'unflipped_ordinal_aligned'"
         )
     return ax
-
-
-def plot_rhi_beam(ax, elevation, **kwargs):
-    # plot the sweep extremes
-    xlims = ax.get_xlim()
-    ylims = ax.get_ylim()
-
-    # plot start
-    endpoint_start_x = xlims[1], xlims[1] * np.tan(np.deg2rad(elevation))
-    endpoint_start_y = (
-        ylims[1] * np.tan(np.deg2rad(90 - elevation)),
-        ylims[1],
-    )
-    endpoint = (
-        endpoint_start_y
-        if endpoint_start_x[1] > endpoint_start_y[0]
-        else endpoint_start_x
-    )
-    ax.plot([0, endpoint[0]], [0, endpoint[1]], c="limegreen", lw=0.7)
-
-    ax.set_xlim(xlims)
-    ax.set_ylim(ylims)
