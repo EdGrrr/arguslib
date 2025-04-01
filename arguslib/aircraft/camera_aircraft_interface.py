@@ -78,7 +78,8 @@ class CameraAircraftInterface:
             self.camera.annotate_positions(
                 positions[-1:],
                 ax,
-                "ro",
+                color="r",
+                marker="o",
                 markersize=2,
             )
 

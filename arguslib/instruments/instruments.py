@@ -310,7 +310,7 @@ class Camera(Instrument):
                 pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], *args, **kwargs
             )
         else:
-            plotting_method(
+            getattr(ax, plotting_method)(
                 pl_track.T[0][dists < 90],
                 pl_track.T[1][dists < 90],
                 *args,
@@ -454,8 +454,6 @@ class Radar(Instrument):
 
         azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
 
-        print(azimuth, azimuths)
-
         theta_seps = azimuths - azimuth
         offsets = dists * np.sin(
             np.deg2rad(theta_seps)
@@ -468,6 +466,6 @@ class Radar(Instrument):
         if plotting_method is None:
             ax.plot(xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs)
         else:
-            plotting_method(
+            getattr(ax, plotting_method)(
                 xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs
             )

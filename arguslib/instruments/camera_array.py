@@ -1,5 +1,3 @@
-from cProfile import label
-from tkinter import font
 from matplotlib import pyplot as plt
 import numpy as np
 from .instruments import Camera, Position
@@ -62,7 +60,6 @@ class CameraArray:
         distances_to_each_pos_for_each_camera = np.array(
             distances_to_each_pos_for_each_camera
         )
-        print(distances_to_each_pos_for_each_camera)
 
         closest_pos_index = np.argmin(distances_to_each_pos_for_each_camera, axis=1)
         # get the multiply assigned positions
@@ -85,11 +82,24 @@ class CameraArray:
             )
         return camera_positions
 
-    def show(self, dt, ax=None, label_cameras=True, **kwargs):
+    def show(self, dt, ax=None, replace_ax=None, label_cameras=True, **kwargs):
         """
         Show the camera array on a map.
         """
-        if ax is None:
+        if replace_ax is not None:
+            # we need to get the positon of the axis in the figure, and replace it with the new array of subplots...
+            fig = replace_ax.figure
+            pos = replace_ax.get_subplotspec()
+            replace_ax.remove()
+            subfig = fig.add_subfigure(
+                pos,
+            )
+            axes = subfig.subplots(
+                self.layout_shape[0],
+                self.layout_shape[1],
+                subplot_kw={"projection": "polar"},
+            )
+        elif ax is None:
             fig, axes = plt.subplots(
                 self.layout_shape[0],
                 self.layout_shape[1],
@@ -98,8 +108,7 @@ class CameraArray:
                 constrained_layout=True,
             )
         else:
-            # we need to get the positon of the axis in the figure, and replace it with the new array of subplots...
-            pass
+            return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
 
         for i in range(self.layout_shape[0]):
             for j in range(self.layout_shape[1]):
@@ -128,7 +137,24 @@ class CameraArray:
                         va="bottom",
                         ha="right",
                         transform=ax.transAxes,
-                        fontsize=12,
+                        fontsize="small",
                     )
 
-        return fig.axes
+        return axes
+
+    def annotate_positions(self, positions, ax, *args, **kwargs):
+        """
+        Annotate the positions of the cameras on the map.
+        """
+        for i in range(self.layout_shape[0]):
+            for j in range(self.layout_shape[1]):
+                ax_cam = ax[self.layout_shape[1] - j - 1, i]
+                camera = [
+                    c
+                    for i_cam, c in enumerate(self.cameras)
+                    if self.positions[i_cam] == (i, j)
+                ]
+                if len(camera) == 0:
+                    continue
+                camera = camera[0]
+                camera.annotate_positions(positions, ax_cam, *args, **kwargs)

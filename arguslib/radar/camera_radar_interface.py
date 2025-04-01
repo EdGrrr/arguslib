@@ -1,3 +1,4 @@
+from matplotlib.layout_engine import ConstrainedLayoutEngine
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
@@ -26,7 +27,7 @@ class CameraRadarInterface:
             # RadarData(campaign, "rhi"),
         )
 
-    def show_camera(self, dt, ax=None, **kwargs):
+    def show_camera(self, dt, show_legend=False, ax=None, **kwargs):
         radar = self.radar.data_loader.get_pyart_radar(dt)
         dt_radar = datetime.datetime.fromisoformat(
             datetime_from_radar(radar).isoformat()
@@ -41,12 +42,29 @@ class CameraRadarInterface:
         plot_beam(self.camera, self.radar, elev_azi_start, dt=dt, ax=ax, **kwargs)
         plot_beam(self.camera, self.radar, elev_azi_end, dt=dt, ax=ax, **kwargs)
 
-        ax.legend()
+        if show_legend:
+            try:
+                ax.legend()
+            except AttributeError:
+                # probably a multicam, so just place the legend on the top left of the figure
+                # but only include the first two items in the legend
+                fig = plt.gcf()
+                handles = fig.axes[0].get_legend_handles_labels()[0]
+                labels = fig.axes[0].get_legend_handles_labels()[1]
+                handles = handles[:2]
+                labels = labels[:2]
+                fig.legend(handles=handles, labels=labels, loc="upper left", fontsize=8)
+
         return ax
 
     def show(self, dt, var="DBZ", **kwargs):
         fig, (ax_cam, ax_radar) = plt.subplots(
-            1, 2, figsize=(10, 4), dpi=300, width_ratios=[1, 2]
+            1,
+            2,
+            figsize=(10, 4.2),
+            dpi=300,
+            width_ratios=[1.5, 2],
+            constrained_layout=True,
         )
         self.show_camera(dt, ax=ax_cam)
 

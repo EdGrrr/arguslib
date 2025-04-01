@@ -23,7 +23,7 @@ def plot_range_rings(camera, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
 
 
 def plot_beam(
-    plotting_instrument, radar, elev_azi, dt=None, ax=None, markers=True, **kwargs
+    plotting_instrument, radar, elev_azi, dt=None, ax=None, markers=False, **kwargs
 ):
     if ax is None:
         ax = plt.gca()
@@ -57,7 +57,7 @@ def plot_beam(
                 dt=dt,
                 fontsize=4,
                 color="red",
-                plotting_method=ax.text,
+                plotting_method="text",
             )
 
     return ax
