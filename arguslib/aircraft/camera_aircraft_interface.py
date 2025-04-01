@@ -1,21 +1,19 @@
 import numpy as np
 
+from arguslib.instruments.instruments import PlottableInstrument
+
 from ..instruments.camera import Camera
 
 from ..instruments import Position
 from .fleet import Fleet
 
 
-class CameraAircraftInterface:
-    def __init__(self, camera: Camera, fleet: Fleet):
+class CameraAircraftInterface(PlottableInstrument):
+    def __init__(self, camera: Camera, fleet: Fleet = None):
         self.camera = camera
         self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.
-
-    @classmethod
-    def from_campaign(cls, campaign, camstr):
-        return cls(
-            Camera.from_config(campaign, camstr),
-            Fleet(
+        if self.fleet is None:
+            self.fleet = Fleet(
                 variables=[
                     "lon",
                     "lat",
@@ -30,18 +28,28 @@ class CameraAircraftInterface:
                     "wd",
                     "oat",
                 ]
-            ),
-            # CameraData(campaign, camstr),
+            )
+
+        attrs = {"camera": self.camera.attrs}
+        super().__init__(**attrs)
+
+    @classmethod
+    def from_campaign(cls, campaign, camstr):
+        return cls(
+            Camera.from_config(campaign, camstr),
         )
 
     def get_trails(self, time, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         return self.fleet.get_trails(time, **kwargs)
 
-    def show(self, time, ax=None, tlen=3600, color_icao=False):
-        ax = self.camera.show(time, ax=ax)
-        self.plot_trails(time, ax=ax, tlen=tlen, color_icao=color_icao)
+    def show(self, dt, ax=None, tlen=3600, color_icao=False, **kwargs):
+        ax = self.camera.show(dt, ax=ax, **kwargs)
+        self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao)
         return ax
+
+    def annotate_positions(self, positions, dt, ax, *args, **kwargs):
+        return self.camera.annotate_positions(positions, dt, ax, *args, **kwargs)
 
     def plot_trails(self, dt, ax, color_icao=True, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs

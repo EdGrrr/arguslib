@@ -1,6 +1,9 @@
+import attrs
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
+
+from arguslib.instruments.instruments import PlottableInstrument
 
 from ..instruments.radar import Radar
 
@@ -8,13 +11,19 @@ from ..instruments.camera import Camera
 from ..misc.plotting import plot_beam
 
 
-class CameraRadarInterface:
+class CameraRadarInterface(PlottableInstrument):
     def __init__(self, radar, camera):
         self.radar = radar
         self.camera = camera
 
         if self.radar.data_loader is None:
             radar.initialise_data_loader()
+
+        attrs = {
+            "camera": self.camera.attrs,
+            "radar": self.radar.attrs,
+        }
+        super().__init__(**attrs)
 
     @classmethod
     def from_campaign(cls, campaign, camstr):
@@ -53,7 +62,9 @@ class CameraRadarInterface:
 
         return ax
 
-    def show(self, dt, var="DBZ", **kwargs):
+    def show(self, dt, ax=None, var="DBZ", kwargs_camera={}, **kwargs):
+        if ax is not None:
+            raise ValueError("We need to start with a clean figure")
         fig, (ax_cam, ax_radar) = plt.subplots(
             1,
             2,
@@ -62,8 +73,16 @@ class CameraRadarInterface:
             width_ratios=[1.5, 2],
             constrained_layout=True,
         )
-        self.show_camera(dt, ax=ax_cam)
+        ax_cam = self.show_camera(dt, ax=ax_cam, **kwargs_camera)
 
-        self.radar.show(dt, ax=ax_radar, var=var, **kwargs)
+        ax_radar = self.radar.show(dt, ax=ax_radar, var=var, **kwargs)
 
-        return fig, (ax_cam, ax_radar)
+        return ax_cam, ax_radar
+
+    def annotate_positions(self, positions, dt, ax, **kwargs):
+        ax_cam, ax_radar = ax
+
+        ax_cam = self.camera.annotate_positions(positions, dt, ax=ax_cam, **kwargs)
+        ax_radar = self.radar.annotate_positions(positions, dt, ax=ax_radar, **kwargs)
+
+        return ax_cam, ax_radar

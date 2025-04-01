@@ -132,6 +132,9 @@ class Radar(Instrument):
         self, positions, dt, ax, *args, plotting_method=None, **kwargs
     ):
         # project the positions to the xy plane...
+        xlims = ax.get_xlim()
+
+        furthest_distance = np.max(np.abs(xlims))
 
         if dt is None:
             raise ValueError(
@@ -155,9 +158,14 @@ class Radar(Instrument):
         ys = dists * np.sin(np.deg2rad(elevs))
         xs = dists * np.cos(np.deg2rad(elevs)) * np.cos(np.deg2rad(theta_seps))
 
+        plot_filter = (np.abs(offsets) < 5) & (xs < furthest_distance)
+        if not plot_filter.any():
+            return
         if plotting_method is None:
-            ax.plot(xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs)
+            ax.plot(xs[plot_filter], ys[plot_filter], *args, **kwargs)
         else:
             getattr(ax, plotting_method)(
-                xs[np.abs(offsets) < 5], ys[np.abs(offsets) < 5], *args, **kwargs
+                xs[plot_filter], ys[plot_filter], *args, **kwargs
             )
+
+        ax.set_xlim(xlims)
