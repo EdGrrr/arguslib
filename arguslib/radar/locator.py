@@ -1,5 +1,4 @@
 import xarray as xr
-import matplotlib.pyplot as plt
 
 import pyart
 from csat2.locator import FileLocator

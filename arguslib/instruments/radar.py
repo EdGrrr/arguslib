@@ -58,7 +58,6 @@ class Radar(Instrument):
     def from_config(
         cls, campaign, **kwargs
     ):  # TODO: make from_config a method of Instrument...?
-        import yaml
 
         # look for a config file - try ~/.config/arguslib/radars.yml, then ~/.arguslib/radars.yml, then /etc/arguslib/radars.yml
         # read from all that exists
@@ -102,7 +101,6 @@ class Radar(Instrument):
 
     @override
     def _show(self, dt, var, ax=None, **kwargs):
-        import pyart
         import matplotlib.pyplot as plt
 
         if ax is None:

@@ -1,4 +1,3 @@
-import attrs
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
