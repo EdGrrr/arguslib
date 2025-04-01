@@ -1,9 +1,9 @@
 import numpy as np
 
-from ..instruments import Camera, Position
+from ..instruments.camera import Camera
+
+from ..instruments import Position
 from .fleet import Fleet
-from ..video.locator import CameraData
-from ..misc import geo
 
 
 class CameraAircraftInterface:
@@ -43,12 +43,12 @@ class CameraAircraftInterface:
         self.plot_trails(time, ax=ax, tlen=tlen, color_icao=color_icao)
         return ax
 
-    def plot_trails(self, time, ax, color_icao=True, **kwargs):
+    def plot_trails(self, dt, ax, color_icao=True, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
-        trail_latlons = self.get_trails(time, **kwargs)
-        trail_alts_geom = self.fleet.get_data(time, "alt_geom", tlen=kwargs["tlen"])
+        trail_latlons = self.get_trails(dt, **kwargs)
+        trail_alts_geom = self.fleet.get_data(dt, "alt_geom", tlen=kwargs["tlen"])
 
-        current_data = self.fleet.get_current(time, ["lon", "lat", "alt_geom"])
+        current_data = self.fleet.get_current(dt, ["lon", "lat", "alt_geom"])
 
         for acft in trail_latlons.keys():
             if (
@@ -68,15 +68,15 @@ class CameraAircraftInterface:
                     alts_m, current_data[acft]["alt_geom"] / (3.33 * 1000)
                 )
 
-            # TODO: I want a function on Camera that will take a lon, lat, alt_m (or iterables of them) and return the pixel coordinates
             positions = [
                 Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_m)
             ]
             self.camera.annotate_positions(
-                positions, ax=ax, color="r" if not color_icao else f"#{acft}", lw=1
+                positions, dt, ax, color="r" if not color_icao else f"#{acft}", lw=1
             )
             self.camera.annotate_positions(
                 positions[-1:],
+                dt,
                 ax,
                 color="r",
                 marker="o",

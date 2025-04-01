@@ -1,4 +1,3 @@
-from os import replace
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -46,15 +45,13 @@ def plot_beam(
         dists = [0, 2, 5, 10, 15]
         for d in dists:
             pt = radar.beam(radar_elev, radar_azimuth, [d])
-            plotting_instrument.annotate_positions(
-                pt[:, 0], ax, "ro", dt=dt, markersize=2
-            )
+            plotting_instrument.annotate_positions(pt[:, 0], dt, ax, "ro", markersize=2)
 
             plotting_instrument.annotate_positions(
                 pt[:, 0],
+                dt,
                 ax,
                 f"---{d:.1f} km",
-                dt=dt,
                 fontsize=4,
                 color="red",
                 plotting_method="text",
@@ -72,7 +69,6 @@ def get_pixel_transform(camera, ax, lr_flip=True):
     img_size_px = 3040 * camera.scale_factor
     principal_point = camera.intrinsic.principal_point
 
-    # does this need to be reversed?
     translation_px = 3040 / 2 - principal_point[0], 3040 / 2 - principal_point[1]
 
     transPixel = (

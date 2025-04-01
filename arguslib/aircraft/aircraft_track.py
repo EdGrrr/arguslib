@@ -5,8 +5,10 @@ import requests
 import numpy as np
 from io import BytesIO
 import matplotlib.pyplot as plt
+from arguslib.instruments.camera import Camera
+from arguslib.instruments.radar import Radar
 from arguslib.misc import geo
-from arguslib.instruments import Camera, Radar, Position
+from arguslib.instruments import Position
 
 
 cam1_calibration_file = (

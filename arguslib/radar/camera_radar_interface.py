@@ -1,12 +1,10 @@
-from matplotlib.layout_engine import ConstrainedLayoutEngine
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
-import numpy as np
 
-from ..instruments import Camera, Radar
-from ..video.locator import CameraData
-from .locator import RadarData
+from ..instruments.radar import Radar
+
+from ..instruments.camera import Camera
 from ..misc.plotting import plot_beam
 
 
@@ -23,8 +21,6 @@ class CameraRadarInterface:
         return cls(
             Radar.from_config(campaign),
             Camera.from_config(campaign, camstr),
-            # CameraData(campaign, camstr),
-            # RadarData(campaign, "rhi"),
         )
 
     def show_camera(self, dt, show_legend=False, ax=None, **kwargs):

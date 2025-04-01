@@ -1,9 +1,11 @@
 from matplotlib import pyplot as plt
 import numpy as np
-from .instruments import Camera, Position
+
+from .camera import Camera
+from .instruments import PlottableInstrument, Position
 
 
-class CameraArray:
+class CameraArray(PlottableInstrument):
     def __init__(self, cameras: list[Camera], layout_shape: tuple[int, int]):
         self.cameras = cameras
         self.layout_shape = layout_shape
@@ -13,7 +15,11 @@ class CameraArray:
                 "The specified layout doesn't have enough spaces to have a full layout."
             )
 
+        attrs = {"camstr": [c.attrs["camstr"] for c in cameras]}
+
         self.positions = self.infer_positions()
+
+        super().__init__(**attrs)
 
     def infer_positions(self) -> list[tuple[int, int]]:
         """
@@ -142,7 +148,7 @@ class CameraArray:
 
         return axes
 
-    def annotate_positions(self, positions, ax, *args, **kwargs):
+    def annotate_positions(self, positions, dt, ax, *args, **kwargs):
         """
         Annotate the positions of the cameras on the map.
         """
@@ -157,4 +163,4 @@ class CameraArray:
                 if len(camera) == 0:
                     continue
                 camera = camera[0]
-                camera.annotate_positions(positions, ax_cam, *args, **kwargs)
+                camera.annotate_positions(positions, dt, ax_cam, *args, **kwargs)
