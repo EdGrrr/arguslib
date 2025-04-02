@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import numpy as np
+from pathlib import Path
 
 from .camera import Camera
 from .instruments import PlottableInstrument, Position
@@ -20,6 +21,43 @@ class CameraArray(PlottableInstrument):
         self.positions = self.infer_positions()
 
         super().__init__(**attrs)
+
+    @classmethod
+    def from_config(
+        cls, array_name
+    ):  # TODO: make from_config a method of Instrument...?
+        import yaml
+
+        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml, then /etc/arguslib/cameras.yml
+        # read from all that exists
+        config_paths = [
+            Path("~/.config/arguslib/camera_arrays.yml").expanduser(),
+            Path("~/.arguslib/camera_arrays.yml").expanduser(),
+            Path("/etc/arguslib/camera_arrays.yml"),
+        ]
+        configs = []
+        for config_file in config_paths:
+            if not config_file.exists():
+                continue
+            with open(config_file, "r") as f:
+                configs.append(yaml.safe_load(f))
+
+        if not configs:
+            raise FileNotFoundError("No camera configuration file found")
+
+        camera_arrays = {}
+        for config in configs[::-1]:
+            camera_arrays.update(config)
+
+        array_config = camera_arrays[array_name]
+
+        cameras = [
+            Camera.from_config(array_config["campaign"], c)
+            for c in array_config["cameras"]
+        ]
+        # will ignore config if kwargs contains any of the keys in camera_config
+
+        return cls(cameras, array_config["layout_shape"])
 
     def infer_positions(self) -> list[tuple[int, int]]:
         """
