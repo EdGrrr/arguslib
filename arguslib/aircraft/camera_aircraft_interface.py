@@ -9,7 +9,7 @@ from .fleet import Fleet
 
 
 class CameraAircraftInterface(PlottableInstrument):
-    def __init__(self, camera: Camera, fleet: Fleet = None):
+    def __init__(self, camera: PlottableInstrument, fleet: Fleet = None):
         self.camera = camera
         self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.
         if self.fleet is None:
@@ -43,15 +43,25 @@ class CameraAircraftInterface(PlottableInstrument):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         return self.fleet.get_trails(time, **kwargs)
 
-    def show(self, dt, ax=None, tlen=3600, color_icao=False, **kwargs):
+    def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
         ax = self.camera.show(dt, ax=ax, **kwargs)
-        self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao)
+
+        self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao, **trail_kwargs)
         return ax
 
     def annotate_positions(self, positions, dt, ax, *args, **kwargs):
         return self.camera.annotate_positions(positions, dt, ax, *args, **kwargs)
 
-    def plot_trails(self, dt, ax, color_icao=True, **kwargs):
+    def plot_trails(
+        self,
+        dt,
+        ax,
+        color_icao=True,
+        plot_kwargs={},
+        plot_trails_kwargs={},
+        plot_plane_kwargs={},
+        **kwargs,
+    ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
         trail_latlons = self.get_trails(dt, **kwargs)
         trail_alts_geom = self.fleet.get_data(dt, "alt_geom", tlen=kwargs["tlen"])
@@ -80,7 +90,12 @@ class CameraAircraftInterface(PlottableInstrument):
                 Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_m)
             ]
             self.camera.annotate_positions(
-                positions, dt, ax, color="r" if not color_icao else f"#{acft}", lw=1
+                positions,
+                dt,
+                ax,
+                color="r" if not color_icao else f"#{acft}",
+                lw=1,
+                **(plot_kwargs | plot_trails_kwargs),
             )
             self.camera.annotate_positions(
                 positions[-1:],
@@ -89,6 +104,7 @@ class CameraAircraftInterface(PlottableInstrument):
                 color="r",
                 marker="o",
                 markersize=2,
+                **(plot_kwargs | plot_plane_kwargs),
             )
 
 

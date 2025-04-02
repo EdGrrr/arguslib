@@ -31,14 +31,21 @@ def plot_beam(
     dists = np.logspace(-2, np.log10(15), 100)
     radar_beam_positions = radar.beam(radar_elev, radar_azimuth, dists)
 
+    kwargs = (
+        dict(
+            markersize=1,
+            color="limegreen",
+            lw=0.7,
+            label=f"elev={radar_elev:.1f}\\textdegree, az={radar_azimuth:.1f}\\textdegree",
+        )
+        | kwargs
+    )
+
     plotting_instrument.annotate_positions(
         radar_beam_positions[:, 0],
         dt=dt,
         ax=ax,
-        markersize=1,
-        color="limegreen",
-        lw=0.7,
-        label=f"elev={radar_elev:.1f}\\textdegree, az={radar_azimuth:.1f}\\textdegree",
+        **kwargs,
     )
 
     if markers:

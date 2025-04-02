@@ -100,7 +100,7 @@ class Radar(Instrument):
         self.data_loader = RadarData(self.attrs["campaign"], "rhi")
 
     @override
-    def _show(self, dt, var, ax=None, **kwargs):
+    def _show(self, dt, var, ax=None, kwargs_beam={}, **kwargs):
         import matplotlib.pyplot as plt
 
         if ax is None:
@@ -120,10 +120,12 @@ class Radar(Instrument):
 
         elev_azi_start = radar.elevation["data"][0], radar.azimuth["data"][0]
         elev_azi_end = radar.elevation["data"][-1], radar.azimuth["data"][-1]
-        plot_beam(self, self, elev_azi_start, dt=dt, ax=ax, **kwargs)
-        plot_beam(self, self, elev_azi_end, dt=dt, ax=ax, **kwargs)
-        # plot_rhi_beam(ax, elevs[0])
-        # plot_rhi_beam(ax, elevs[-1])
+        plot_beam(
+            self, self, elev_azi_start, dt=dt, ax=ax, color="darkgreen", **kwargs_beam
+        )
+        plot_beam(
+            self, self, elev_azi_end, dt=dt, ax=ax, color="limegreen", **kwargs_beam
+        )
 
         return ax
 
@@ -132,8 +134,6 @@ class Radar(Instrument):
     ):
         # project the positions to the xy plane...
         xlims = ax.get_xlim()
-
-        furthest_distance = np.max(np.abs(xlims))
 
         if dt is None:
             raise ValueError(
