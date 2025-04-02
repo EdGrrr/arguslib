@@ -111,6 +111,7 @@ class Radar(Instrument):
         kwargs = {
             "vmin": -60,
             "vmax": 40,
+            "reverse_xaxis": False,  # explicitly False to avoid flipping when all distances are negative.
         } | kwargs
         display.plot(var, ax=ax, **kwargs)
         ax.set_aspect("equal")
@@ -156,7 +157,10 @@ class Radar(Instrument):
         ys = dists * np.sin(np.deg2rad(elevs))
         xs = dists * np.cos(np.deg2rad(elevs)) * np.cos(np.deg2rad(theta_seps))
 
-        plot_filter = (np.abs(offsets) < 5) & (xs < furthest_distance)
+        # xaxis runs west to east, so if azimuth % 360 > 180, then the x axis is flipped
+        if azimuth > 90 and azimuth < 270:
+            xs = -xs
+        plot_filter = (np.abs(offsets) < 5) & (xs > xlims[0]) & (xs < xlims[1])
         if not plot_filter.any():
             return
         if plotting_method is None:
