@@ -250,6 +250,8 @@ class Fleet:
         self.last_update = None
         self.time_resolution = time_resolution
 
+        self.loaded_file = None
+
     def add_data(self, dtime, acdata):
         if self.last_update and (dtime.hour != self.last_update.hour):
             self.write_output(self.last_update.strftime("%Y%m%d_ADS-B"))
@@ -329,7 +331,9 @@ class Fleet:
                 var_data.append(ncdf.variables[vname])
             var_data = np.array(var_data)
 
-            for aind, acft_name in tqdm.tqdm(enumerate(acft_list)):
+            for aind, acft_name in tqdm.tqdm(
+                enumerate(acft_list), desc="Loading ADS-B data", unit="acft"
+            ):
                 self.aircraft[acft_name] = Aircraft(
                     acft_name,
                     acft_types[acft_name],
@@ -338,6 +342,8 @@ class Fleet:
                 )
                 for vind, vname in enumerate(self.variables):
                     self.aircraft[acft_name].pos.positions = var_data[:, aind].T
+
+        self.loaded_file = filename
 
     def list_current(self):
         return self.aircraft.keys()
