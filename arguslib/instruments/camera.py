@@ -13,7 +13,6 @@ from arguslib.misc.plotting import (
 
 
 import numpy as np
-import yaml
 
 
 from pathlib import Path
@@ -158,7 +157,7 @@ class Camera(Instrument):
 
     @override
     def annotate_positions(
-        self, positions, dt, ax, *args, plotting_method=None, **kwargs
+        self, positions, dt, ax, *args, plotting_method=None, max_range_km=90, **kwargs
     ):
         # TODO: this should take dt into account, mostly because the calibration may change for the same camera at different times...
         lats = [p.lat for p in positions]
@@ -171,18 +170,21 @@ class Camera(Instrument):
             ]
         )
 
-        if (dists[~np.isnan(dists)] > 90).all():
+        if (dists[~np.isnan(dists)] > max_range_km).all():
             return
 
         pl_track = np.array([self.target_pix(p) for p in positions])
         if plotting_method is None:
             ax.plot(
-                pl_track.T[0][dists < 90], pl_track.T[1][dists < 90], *args, **kwargs
+                pl_track.T[0][dists < max_range_km],
+                pl_track.T[1][dists < max_range_km],
+                *args,
+                **kwargs,
             )
         else:
             getattr(ax, plotting_method)(
-                pl_track.T[0][dists < 90],
-                pl_track.T[1][dists < 90],
+                pl_track.T[0][dists < max_range_km],
+                pl_track.T[1][dists < max_range_km],
                 *args,
                 **kwargs,
             )
