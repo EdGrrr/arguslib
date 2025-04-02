@@ -36,6 +36,10 @@ class CameraRadarInterface(PlottableInstrument):
         dt_radar = datetime.datetime.fromisoformat(
             datetime_from_radar(radar).isoformat()
         )
+        if dt_radar.replace(microsecond=0) != dt.replace(microsecond=0):
+            raise ValueError(
+                f"dt ({dt}) does not match any radar data. (Try {dt_radar.replace(microsecond=0)})"
+            )
 
         ax = self.camera.show(dt_radar, replace_ax=ax, **kwargs)
 

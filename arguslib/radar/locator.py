@@ -1,5 +1,5 @@
 import xarray as xr
-
+import datetime
 import pyart
 from csat2.locator import FileLocator
 
@@ -61,15 +61,6 @@ class RadarData:
 
         return self.radar_data
 
-    # def plot(self, dt, var, ax=None, **kwargs):
-    #     if ax is None:
-    #         _, ax = plt.subplots()
-    #     radar = self.get_pyart_radar(dt)
-    #     display = pyart.graph.RadarDisplay(radar)
-    #     display.plot(var, ax=ax, **kwargs)
-    #     ax.set_aspect("equal")
-    #     return ax
-
     def get_filepath(self, dt):
         if self.scan_type == "vpt":
             hour = "**"
@@ -98,3 +89,48 @@ class RadarData:
             tot_secs = [m * 60 + s for m, s in zip(mins, secs)]
             closest = min(tot_secs, key=lambda x: abs(x - dt.minute * 60 - dt.second))
             return files[tot_secs.index(closest)]
+
+    def get_next_time(self, dt, max_gap_hrs=48):
+        """
+        Get the next available time for the radar data.
+        """
+        hour = "**"
+
+        files = self.locator.search(
+            "ARGUS",
+            self.scan_type,
+            campaign=self.campaign,
+            year=dt.year,
+            mon=dt.month,
+            day=dt.day,
+            hour=hour,
+            min="**",
+            second="**",
+        )
+        files = sorted(files)
+
+        dates = []
+        for f in files:
+            dates.append(datetime.datetime.strptime(f.split("_")[-4], "%Y%m%d-%H%M%S"))
+
+        next_available = None
+        for i, date in enumerate(dates):
+            if date > dt:  # dont want to include the current file
+                # check if the gap is less than max_gap_hrs
+                if (date - dt).total_seconds() / 3600 > max_gap_hrs:
+                    return None
+                next_available = date
+                return next_available
+
+        if next_available is None:
+            # no files today.
+            next_day = dt + datetime.timedelta(days=1)
+            next_day = next_day.replace(hour=0, minute=0, second=0)
+            # deplete the max_gap_hrs
+            max_gap_hrs -= (next_day - dt).total_seconds() / 3600
+            if max_gap_hrs < 0:
+                return None
+
+            return self.get_next_time(
+                datetime.datetime(dt.year, dt.month, dt.day, dt.hour + 1), max_gap_hrs
+            )
