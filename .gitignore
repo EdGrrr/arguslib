@@ -1,3 +1,4 @@
 *.pyc
 arguslib.egg-info
 build
+output

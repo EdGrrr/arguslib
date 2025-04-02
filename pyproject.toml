@@ -9,3 +9,7 @@ dependencies = [
 authors = [
 {name = 'Edward Gryspeerdt', email='e.gryspeerdt@imperial.ac.uk'},
 ]
+
+[build-system]
+requires = ["pdm-backend >= 2.4.0"]
+build-backend = "pdm.backend"
