@@ -114,7 +114,7 @@ class Camera(Instrument):
         self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
 
     @override
-    def _show(self, dt, ax=None, **kwargs):
+    def _show(self, dt, ax=None, fail_if_no_data=True, **kwargs):
         defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
         if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
@@ -147,12 +147,20 @@ class Camera(Instrument):
 
         ax.transData = transform
 
-        img = self.get_data_time(dt)
-        ax.imshow(img[:, :, ::-1], origin="upper")
-        plot_range_rings(self, ax=ax)
-
         if is_polar:
             ax.set_rticks([])
+
+        plot_range_rings(self, ax=ax)
+
+        try:
+            img = self.get_data_time(dt)
+        except FileNotFoundError as e:
+            if fail_if_no_data:
+                raise e
+            else:
+                return ax
+        ax.imshow(img[:, :, ::-1], origin="upper")
+
         return ax
 
     @override

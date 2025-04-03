@@ -154,6 +154,7 @@ class CameraArray(PlottableInstrument):
         else:
             return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
 
+        fail_counts = 0
         for i in range(self.layout_shape[0]):
             for j in range(self.layout_shape[1]):
                 ax = axes[self.layout_shape[1] - j - 1, i]
@@ -166,12 +167,16 @@ class CameraArray(PlottableInstrument):
                     ax.remove()
                     continue
                 camera = camera[0]
-                camera.show(
+                ax = camera.show(
                     dt,
                     pos=f"{self.layout_shape[0]}{self.layout_shape[1]}{3*i+j}",
                     ax=ax,
+                    fail_if_no_data=False,
                     **kwargs,
                 )
+                # check if it failed
+                if ax.get_images() == []:
+                    fail_counts += 1
                 ax.set_thetagrids(np.arange(0, 360, 45), labels=[])
                 if label_cameras:
                     ax.text(
@@ -183,6 +188,8 @@ class CameraArray(PlottableInstrument):
                         transform=ax.transAxes,
                         fontsize="small",
                     )
+        if fail_counts == len(self.cameras):
+            raise FileNotFoundError("No camera data found for this time.")
 
         return axes
 

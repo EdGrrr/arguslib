@@ -1,5 +1,5 @@
 # %%
-import datetime as dt
+import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ radar = Radar.from_config("COBALT")
 cri = RadarInterface(radar, multicam)
 cai = AircraftInterface(cri)
 
-start_time = dt.datetime(
+start_time = datetime.datetime(
     2025,
     3,
     25,
@@ -51,6 +51,12 @@ while True:
     except FileNotFoundError:
         # print("  Skipping due to missing ADS-B data.")
         continue
+    except RuntimeError as e:
+        if "NetCDF: HDF error" in str(e):
+            # Some broken ADS-B files, we need to skip to the next day...
+            dt = dt + datetime.timedelta(days=1)
+            dt.replace(hour=0, minute=0, second=0)
+            continue
 
     try:
         axes_cams, ax_radar = cai.show(
@@ -62,7 +68,7 @@ while True:
             },
         )
     except FileNotFoundError as e:
-        if "No video file found" in str(e):
+        if "No video file found" in str(e) or "No camera data found" in str(e):
             # expected e.g. during nighttime
             # print("  Skipping due to missing camera data.")
             continue
