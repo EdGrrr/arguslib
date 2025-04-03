@@ -1,13 +1,14 @@
 [project]
 name = 'arguslib'
 description = 'Support library for using cameras in the argus network'
-version = '0.1a'
+version = '0.2'
 requires-python = ">= 3.8"
 dependencies = [
 'numpy'
 ]
 authors = [
 {name = 'Edward Gryspeerdt', email='e.gryspeerdt@imperial.ac.uk'},
+{name = 'Oliver Driver'}
 ]
 
 [build-system]

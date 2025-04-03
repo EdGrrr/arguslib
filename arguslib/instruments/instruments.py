@@ -116,6 +116,7 @@ class Instrument(PlottableInstrument):
         perspective cameras.
 
         """
+        # FIXME: add a full extrinsic calibration---3d angle.
         return elevation, azimuth + self.rotation, dist
 
     def gead_to_iead(self, elevation, azimuth, dist):
