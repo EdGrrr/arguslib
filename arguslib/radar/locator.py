@@ -131,6 +131,4 @@ class RadarData:
             if max_gap_hrs < 0:
                 return None
 
-            return self.get_next_time(
-                datetime.datetime(dt.year, dt.month, dt.day, dt.hour + 1), max_gap_hrs
-            )
+            return self.get_next_time(next_day, max_gap_hrs)

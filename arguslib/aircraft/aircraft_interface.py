@@ -8,7 +8,7 @@ from ..instruments import Position
 from .fleet import Fleet
 
 
-class CameraAircraftInterface(PlottableInstrument):
+class AircraftInterface(PlottableInstrument):
     def __init__(self, camera: PlottableInstrument, fleet: Fleet = None):
         self.camera = camera
         self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.

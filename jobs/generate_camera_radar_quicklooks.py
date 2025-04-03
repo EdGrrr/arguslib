@@ -5,8 +5,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import tqdm
 
-from arguslib.aircraft import CameraAircraftInterface
-from arguslib.radar import CameraRadarInterface
+from arguslib.aircraft import AircraftInterface
+from arguslib.radar import RadarInterface
 from arguslib.instruments.radar import Radar
 from arguslib.instruments.camera_array import CameraArray
 
@@ -16,14 +16,14 @@ outdir.mkdir(exist_ok=True, parents=True)
 
 multicam = CameraArray.from_config("COBALTArray")
 radar = Radar.from_config("COBALT")
-cri = CameraRadarInterface(radar, multicam)
-cai = CameraAircraftInterface(cri)
+cri = RadarInterface(radar, multicam)
+cai = AircraftInterface(cri)
 
 start_time = dt.datetime(
     2025,
     3,
     25,
-    0,
+    23,
     0,
 )
 dt = start_time

@@ -10,7 +10,7 @@ from ..instruments.camera import Camera
 from ..misc.plotting import plot_beam
 
 
-class CameraRadarInterface(PlottableInstrument):
+class RadarInterface(PlottableInstrument):
     def __init__(self, radar: Radar, camera: PlottableInstrument):
         self.radar = radar
         self.camera = camera

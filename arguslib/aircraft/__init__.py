@@ -1,1 +1,1 @@
-from .camera_aircraft_interface import CameraAircraftInterface
+from .aircraft_interface import AircraftInterface
