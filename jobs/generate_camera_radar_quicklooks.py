@@ -22,8 +22,8 @@ cai = AircraftInterface(cri)
 start_time = datetime.datetime(
     2025,
     3,
-    25,
-    23,
+    28,
+    0,
     0,
 )
 dt = start_time
@@ -61,7 +61,7 @@ while True:
     try:
         axes_cams, ax_radar = cai.show(
             dt,
-            tlen=120 * 60,
+            tlen=60 * 60,
             color_icao=True,
             trail_kwargs={
                 "plot_kwargs": {"cam_kwargs": {"max_range_km": 30, "alpha": 0.5}}
@@ -71,6 +71,15 @@ while True:
         if "No video file found" in str(e) or "No camera data found" in str(e):
             # expected e.g. during nighttime
             # print("  Skipping due to missing camera data.")
+            continue
+        else:
+            raise e
+    except TypeError as e:
+        # This seems to happen sometimes when the radar data isn't available.
+        # log and continue
+        if "see help(pcolormesh)" in str(e):
+            # print("  Skipping due to missing radar data.")
+            print(f"  Skipping {dt} due to missing radar data.", e)
             continue
         else:
             raise e

@@ -37,6 +37,7 @@ def plot_beam(
             color="limegreen",
             lw=0.7,
             label=f"elev={radar_elev:.1f}\\textdegree, az={radar_azimuth:.1f}\\textdegree",
+            zorder=10,
         )
         | kwargs
     )
