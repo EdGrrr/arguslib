@@ -134,7 +134,7 @@ def make_camera_axes(
         ax = fig.add_subplot(pos, projection="polar")
 
     if theta_behaviour == "pixels":
-        ax.set_theta_offset(np.deg2rad(camera.rotation))
+        ax.set_theta_offset(np.deg2rad(camera.rotation[-1]))
     elif theta_behaviour == "bearing":
         ax.set_theta_offset(np.pi / 2)
         ax.set_theta_direction(-1)
