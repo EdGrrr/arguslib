@@ -1,6 +1,9 @@
 import numpy as np
 import datetime
 import cv2
+from zoneinfo import ZoneInfo
+
+from pytz import utc
 
 # Size of the timestamp label
 ts_factor = 4
@@ -44,7 +47,9 @@ class Video:
 
     def estimate_frame_number(self, dt):
         if dt < self.time_bounds[0] or dt > self.time_bounds[1]:
-            raise ValueError(f"Timestamp {dt} is not in the video time bounds")
+            raise ValueError(
+                f"Timestamp {dt} is not in the video time bounds for the video {self.filepath}"
+            )
         return np.interp(
             dt.timestamp(),
             [self.time_bounds[0].timestamp(), self.time_bounds[1].timestamp()],
@@ -81,7 +86,11 @@ def extract_timestamp(image, ts_factor=ts_factor):
     """Return a datetime object with the image timestamp to the nearest second."""
     image_ts_array = (image[0, 0 : (31 * ts_factor) : ts_factor, 0] > 128).astype("int")
     int_timestamp = int("".join(str(a) for a in image_ts_array), 2)
-    return datetime.datetime.fromtimestamp(int_timestamp)
+    local_time = datetime.datetime.fromtimestamp(
+        int_timestamp, tz=ZoneInfo("Europe/London")
+    )
+    utc_time = local_time.astimezone(utc)
+    return utc_time.replace(tzinfo=None)  # Make "timezone naive" to be compatible.
 
 
 def extract_exposure(image, ts_factor=ts_factor):

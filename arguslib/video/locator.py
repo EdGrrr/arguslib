@@ -10,6 +10,8 @@ video_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/videos/{year}-{mo
 
 cal_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}T{hour:0>2}{min:0>2}{second:0>2}_CAL{im_index}.mp4"
 
+os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "0"  # suppress opencv warnings
+
 
 def initialise_locator():
     locator = FileLocator()
@@ -32,7 +34,9 @@ class CameraData:
         filepath = self.get_video_file(dt)
 
         if filepath is None:
-            raise FileNotFoundError(f"No video file found for {dt}")
+            raise FileNotFoundError(
+                f"No camera {self.camstr} video file found for {dt}"
+            )
 
         if filepath != self.current_video_path:
             self.video = Video(filepath)
@@ -74,16 +78,43 @@ class CameraData:
         # sometimes there are completely empty files – annoying. these are abou 258bytes
         files = [f for f in files if os.path.getsize(f) > 1000]
 
+        # there are some other corrupt files... will need to check if these are broken by trying to load them
+        mins = [int(f.split("_")[-2][2:4]) for f in files]
+        secs = [int(f.split("_")[-2][4:6]) for f in files]
+
+        tot_secs = [
+            (dt.minute * 60 + dt.second) - (m * 60 + s) for m, s in zip(mins, secs)
+        ]
+
+        files = [f for f, delta_t in zip(files, tot_secs) if delta_t >= -60]
+        tot_secs = [delta_t for delta_t in tot_secs if delta_t >= -60]
+
         if len(files) == 0:
             return None
         elif len(files) == 1:
+            if is_mp4_file_corrupt(files[0]):
+                return None
             return files[0]
         else:
-            mins = [int(f.split("_")[-2][2:4]) for f in files]
-            secs = [int(f.split("_")[-2][4:6]) for f in files]
-            tot_secs = [m * 60 + s for m, s in zip(mins, secs)]
-            closest = min(tot_secs, key=lambda x: abs(x - dt.minute * 60 - dt.second))
-            return files[tot_secs.index(closest)]
+            closest = min(tot_secs)
+            fpath = files[tot_secs.index(closest)]
+            if is_mp4_file_corrupt(fpath):
+                return None
+            return fpath
+
+
+def is_mp4_file_corrupt(filepath):
+    """
+    Check if the mp4 file is corrupt by trying to open it with cv2.
+    If it fails, return True, otherwise return False.
+    """
+    import cv2
+
+    cap = cv2.VideoCapture(filepath)
+    if not cap.isOpened():
+        return True
+    else:
+        return False
 
 
 # %%
