@@ -1,23 +1,37 @@
+from arguslib.instruments.instruments import Position
 import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_range_rings(camera, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
+def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
     range_out = {}
     kwargs = {"c": "orange", "lw": 0.7} | kwargs
     for rd in ranges:
-        range_out[rd] = {}
-        rl = []
-        for az in range(0, 361, 10):
-            elev, dist = np.rad2deg(np.arctan2(alt, rd)), np.sqrt(alt**2 + rd**2)
-            rl.append(camera.iead_to_pix(*camera.gead_to_iead(elev, az, dist)))
-        rl = np.array(rl)
-        ax.plot(rl[:, 0], rl[:, 1], **kwargs)
-        range_out[rd]["px"] = rl[:, 0]
-        range_out[rd]["py"] = rl[:, 1]
+        # get the positions at the same altitude, but at distance rd
+        global_elevs = np.zeros(37)
+        global_azis = np.arange(0, 361, 10)
+        global_dists = np.ones(37) * rd
+
+        # convert to lat lon positions
+        positions = [
+            camera.position.ead_to_lla(global_elev, global_azi, global_dist)
+            for global_elev, global_azi, global_dist in zip(
+                global_elevs, global_azis, global_dists
+            )
+        ]
+
+        # then move them to the correct altitude
+        positions = [Position(pos.lon, pos.lat, alt) for pos in positions]
+
+        camera.annotate_positions(
+            positions,
+            None,
+            ax=ax,
+            **kwargs,
+        )
     return range_out
 
 
@@ -83,7 +97,7 @@ def get_pixel_transform(camera, ax, lr_flip=True):
         Affine2D()
         .translate(*translation_px)
         .scale(1 / img_size_px, 1 / img_size_px)
-        .rotate_deg_around(0.5, 0.5, -1 * camera.rotation)
+        .rotate_deg_around(0.5, 0.5, -1 * camera.rotation[-1])
     )
 
     if (
