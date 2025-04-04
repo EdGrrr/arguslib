@@ -77,3 +77,18 @@ The hard-coded patterns used to find processed radar `vpt` and `rhi` netcdfs are
 /disk1/Data/{campaign}/radar/L1/{year}{mon:0>2}{day:0>2}/ncas-mobile-ka-band-radar-1_cao_{year}{mon:0>2}{day:0>2}-{hour:0>2}**_rhi_l1_v1.0.0.nc
 ```
 `vpt` data has limited support.
+
+
+
+
+## Camera Calibration
+Cameras need intrinsic and extrinsic calibration to be able to geolocate features.
+
+- Intrinsic calibration links the positions in an image to locations relative to the imager. The required parameters are the coefficients of two polynomials to link the distances, and the principal point of the image:
+  - `poly_incident_angle_to_radius`
+  - `poly_radius_to_z`
+  - `principal_point`
+- Extrinsic calibration links the camera coordinate system to the global coordinates. For this, three angles are needed. We determine the direction of the image optical axis using the instrument elevation and azimuth. Then, the roll determines the orientation of the image about this axis.
+  - `elevation` is measured between the horizontal plane and the optical axis.
+  - `azimuth` is measured between the north axis and the projection of the optical axis into the focal plane.
+  - The `roll` is measured between the top of the image and the plane defined by the zenith and focal axes. `rotation` is an alias for `roll`.

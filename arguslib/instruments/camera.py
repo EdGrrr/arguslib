@@ -3,6 +3,7 @@ from arguslib.instruments.instruments import (
     Instrument,
     Position,
     default_calibration_file,
+    ead_to_xyz,
 )
 from arguslib.misc.geo import haversine
 from arguslib.misc.plotting import (
@@ -91,9 +92,7 @@ class Camera(Instrument):
 
     def iead_to_pix(self, elevation, azimuth, dist=10):
         return (
-            self.intrinsic.view_to_image(
-                self.position.ead_to_xyz(elevation, azimuth, dist)
-            )
+            self.intrinsic.view_to_image(ead_to_xyz(elevation, azimuth, dist))
             / self.scale_factor
         )
 
@@ -150,7 +149,7 @@ class Camera(Instrument):
         if is_polar:
             ax.set_rticks([])
 
-        plot_range_rings(self, ax=ax)
+        plot_range_rings(self, dt, ax=ax)
 
         try:
             img = self.get_data_time(dt)
