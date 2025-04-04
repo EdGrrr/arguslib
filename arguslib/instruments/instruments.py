@@ -41,12 +41,12 @@ def rotation_matrix_i_to_g(elevation, azimuth, roll):
         ]
     )
 
-    # Elevation rotation (Rₑ) - global y-axis
+    # Elevation rotation (Rₑ) - global x-axis
     R_e = np.array(
         [
-            [np.cos(elevation), 0, np.sin(elevation)],
-            [0, 1, 0],
-            [-np.sin(elevation), 0, np.cos(elevation)],
+            [1, 0, 0],
+            [0, np.cos(elevation), -np.sin(elevation)],
+            [0, np.sin(elevation), np.cos(elevation)],
         ]
     )
 
