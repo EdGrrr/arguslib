@@ -52,7 +52,7 @@ def rotation_matrix_i_to_g(elevation, azimuth, roll):
 
     # Roll rotation (Rᵣ) - local z-axis
     R_r = np.array(
-        [[np.cos(roll), -np.sin(roll), 0], [np.sin(roll), np.cos(roll), 0], [0, 0, 1]]
+        [[np.cos(roll), np.sin(roll), 0], [-np.sin(roll), np.cos(roll), 0], [0, 0, 1]]
     )
 
     # Combined rotation matrix
@@ -165,10 +165,9 @@ class Instrument(PlottableInstrument):
     def gead_to_iead(self, elevation, azimuth, dist):
         gxyz = ead_to_xyz(elevation, azimuth, dist)
         # apply the inverse rotation
-        R = rotation_matrix_i_to_g(
-            self.rotation[0], self.rotation[1], self.rotation[2]
-        ).T
-        ixyz = R @ gxyz
+        R = rotation_matrix_i_to_g(self.rotation[0], self.rotation[1], self.rotation[2])
+        inv_R = np.linalg.inv(R)
+        ixyz = inv_R @ gxyz
         # convert to instrument-relative ead coordinates
         instrument_elevation, instrument_azimuth, dist = xyz_to_ead(*ixyz)
 
