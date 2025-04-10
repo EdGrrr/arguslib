@@ -205,6 +205,12 @@ class Camera(Instrument):
             return
 
         pl_track = np.array([self.target_pix(p) for p in positions])
+
+        # if nonpolar axes, need to preserve the limits
+        if hasattr(ax, "set_xlim"):
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+
         if plotting_method is None:
             ax.plot(
                 pl_track.T[0][(dists < max_range_km) & ~behind_camera],
@@ -219,4 +225,8 @@ class Camera(Instrument):
                 *args,
                 **kwargs,
             )
+
+        if hasattr(ax, "set_xlim"):
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
         return ax

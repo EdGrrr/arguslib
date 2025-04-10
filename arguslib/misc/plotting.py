@@ -155,4 +155,8 @@ def make_camera_axes(
             raise ValueError(
                 "theta_behaviour must be one of 'pixels', 'bearing', or 'unflipped_ordinal_aligned'"
             )
+    else:
+        ax.set_box_aspect(camera.image_size_px[1] / camera.image_size_px[0])
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
     return ax
