@@ -38,6 +38,11 @@ COBALT:
     calibration_file:  null
     position: [-1.78568, 51.09967, 0.1]
     rotation: -115
+  2-11:
+    focal_lengths: [1712.4324324324323, 856.2162162162161]
+    principal_point: [2304, 1296]
+    position: [-0.1791071, 51.499189, 0.1]
+    rotation: [45, 250, 190]
 
 ```
 A null value for the calibration file will cause the code to fall back on the default config (which is distributed with the package files).
