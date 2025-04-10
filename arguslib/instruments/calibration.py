@@ -1,3 +1,4 @@
+from cv2 import undistort
 import numpy as np
 
 
@@ -90,3 +91,50 @@ class Projection:
         return project_poly_thetar(
             v_view, self.poly_thetar, self.principal_point, normed
         )
+
+
+def focal_length_px(focal_length_mm, image_size_px, sensor_size_mm):
+    """
+    Convert focal length in mm to pixels
+    """
+    return focal_length_mm * image_size_px / sensor_size_mm
+
+
+class PerspectiveProjection:
+    def __init__(self, focal_lengths, principal_point, distortion_coeffs=None):
+        self.focal_lengths = focal_lengths
+        self.principal_point = principal_point  # 1x2 containing cx, cy
+        self.camera_matrix = np.array(
+            [
+                [focal_lengths[0], 0, principal_point[0]],
+                [0, focal_lengths[1], principal_point[1]],
+                [0, 0, 1],
+            ]
+        )
+        self.distortion_coeffs = distortion_coeffs
+        # 1x5 containing k1, k2, p1, p2, k3
+
+        if isinstance(distortion_coeffs, list):
+            self.distortion_coeffs = np.array(distortion_coeffs)
+
+    def image_to_view(self, p_image, norm: bool = False):
+        """
+        Convert an image pixel location to a 3D location using OpenCV undistort.
+        """
+        undistorted = undistort(
+            np.expand_dims(p_image, axis=0), self.camera_matrix, self.distortion_coeffs
+        )[0]
+        xy = undistorted - self.principal_point
+        z = np.ones_like(xy[..., :1])  # Assume z = 1 for normalized view direction
+        v_view = np.concatenate((xy, z), axis=-1)
+        return unit(v_view) if norm else v_view
+
+    def view_to_image(self, v_view, normed: bool = False):
+        """
+        Convert a 3D location to a pixel location using OpenCV projection.
+        """
+        if normed:
+            v_view = v_view / v_view[..., 2:3]  # Normalize by z-coordinate
+        xy = v_view[..., :2] / v_view[..., 2:3]  # Perspective division
+        distorted = xy * self.focal_lengths + self.principal_point
+        return distorted

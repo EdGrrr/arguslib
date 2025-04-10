@@ -1,4 +1,4 @@
-from arguslib.instruments.calibration import Projection, unit
+from arguslib.instruments.calibration import PerspectiveProjection, Projection, unit
 from arguslib.instruments.instruments import (
     Instrument,
     Position,
@@ -32,6 +32,11 @@ class Camera(Instrument):
         self.intrinsic = intrinsic_calibration
         self.scale_factor = scale_factor
         self.camera_type = camera_type
+
+        self.image_size_px = (
+            [4608, 2592] if self.camera_type == "perspective" else [3040, 3040]
+        )
+        self.image_size_px = np.array(self.image_size_px) * scale_factor
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -66,18 +71,34 @@ class Camera(Instrument):
             cameras.update(config)
 
         camera_config = cameras[campaign][camstr]
-        if camera_config["calibration_file"] is None:
-            camera_config["calibration_file"] = default_calibration_file
 
-        kwargs = {
-            "filename": Path(camera_config["calibration_file"]).expanduser().absolute(),
-            "position": Position(*camera_config["position"]),
-            "rotation": camera_config["rotation"],
-        } | kwargs
-        # will ignore config if kwargs contains any of the keys in camera_config
+        if "calibration_file" in camera_config:  # Then this is an allsky camera
+            if camera_config["calibration_file"] is None:
+                camera_config["calibration_file"] = default_calibration_file
+            kwargs = {
+                "filename": Path(camera_config["calibration_file"])
+                .expanduser()
+                .absolute(),
+                "position": Position(*camera_config["position"]),
+                "rotation": camera_config["rotation"],
+            } | kwargs  # will ignore config if kwargs contains any of the keys in camera_config
 
-        kwargs |= {"campaign": campaign, "camstr": camstr}
-        return cls.from_filename(**kwargs)
+            kwargs |= {"campaign": campaign, "camstr": camstr}
+            return cls.from_filename(**kwargs)
+
+        else:  # Then this is a perspective camera
+            kwargs |= {"campaign": campaign, "camstr": camstr}
+            return cls(
+                PerspectiveProjection(
+                    camera_config["focal_lengths"],
+                    camera_config["principal_point"],
+                    camera_config.get("distortion_coeffs", None),
+                ),
+                position=Position(*camera_config["position"]),
+                rotation=camera_config["rotation"],
+                camera_type="perspective",
+                **kwargs,
+            )
 
     # view here is in the camera space - we need to get the xyz in camera projection, not the world projection
     def target_pix(self, target_position: Position):
@@ -139,10 +160,11 @@ class Camera(Instrument):
         is_polar = hasattr(ax, "set_theta_zero_location")
 
         # if polar axes, assume it's a camera axes with
-        if is_polar:
-            transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
-        else:
-            transform = ax.transData
+        transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
+        # if is_polar:
+        #     transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
+        # else:
+        #     transform = ax.transData
 
         ax.transData = transform
 
@@ -177,21 +199,23 @@ class Camera(Instrument):
             ]
         )
 
+        behind_camera = np.array([self.target_iead(p)[0] < 0 for p in positions])
+
         if (dists[~np.isnan(dists)] > max_range_km).all():
             return
 
         pl_track = np.array([self.target_pix(p) for p in positions])
         if plotting_method is None:
             ax.plot(
-                pl_track.T[0][dists < max_range_km],
-                pl_track.T[1][dists < max_range_km],
+                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
+                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
                 *args,
                 **kwargs,
             )
         else:
             getattr(ax, plotting_method)(
-                pl_track.T[0][dists < max_range_km],
-                pl_track.T[1][dists < max_range_km],
+                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
+                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
                 *args,
                 **kwargs,
             )

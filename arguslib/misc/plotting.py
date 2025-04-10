@@ -85,31 +85,35 @@ def plot_beam(
 def get_pixel_transform(camera, ax, lr_flip=True):
     from matplotlib.transforms import Affine2D
 
-    if ax.name != "polar":
-        return ax.transData
-
-    img_size_px = 3040 * camera.scale_factor
+    # img_size_px = 3040 * camera.scale_factor
     principal_point = camera.intrinsic.principal_point
 
-    translation_px = 3040 / 2 - principal_point[0], 3040 / 2 - principal_point[1]
+    translation_px = (
+        camera.image_size_px[0] / 2 - principal_point[0],
+        camera.image_size_px[1] / 2 - principal_point[1],
+    )
 
     transPixel = (
         Affine2D()
         .translate(*translation_px)
-        .scale(1 / img_size_px, 1 / img_size_px)
+        .scale(1 / camera.image_size_px[0], 1 / camera.image_size_px[1])
         .rotate_deg_around(0.5, 0.5, -1 * camera.rotation[-1])
     )
 
-    if (
-        not lr_flip
-    ):  # can't figure out why this needs doing to gett the unflipped version.
-        # seems to be that the default is to flip it for polar plots??
-        transPixel = transPixel + Affine2D().scale(-1, 1).translate(1, 0)
-    elif (ax.get_theta_direction() == np.pi / 2) and (ax.get_theta_direction() == -1):
-        # bearing axes, so should have been flipped
-        raise print * (
-            "Warning: bearing axes require flipped projection to be accurate"
-        )
+    try:
+        if (
+            not lr_flip
+        ):  # can't figure out why this needs doing to gett the unflipped version.
+            # seems to be that the default is to flip it for polar plots??
+            transPixel = transPixel + Affine2D().scale(-1, 1).translate(1, 0)
+        elif (ax.get_theta_direction() == np.pi / 2) and (
+            ax.get_theta_direction() == -1
+        ):
+            # bearing axes, so should have been flipped
+            print * ("Warning: bearing axes require flipped projection to be accurate")
+    except AttributeError:
+        # non-polar axes
+        pass
 
     transPixel = transPixel + ax.transAxes
     return transPixel
@@ -121,6 +125,11 @@ def make_camera_axes(
     if fig is None:
         fig = plt.figure()
 
+    if camera.camera_type == "perspective":
+        projection = None
+    elif camera.camera_type == "allsky":
+        projection = "polar"
+
     if replace_ax is not None:
         fig = replace_ax.figure
         pos = replace_ax.get_position()
@@ -128,21 +137,22 @@ def make_camera_axes(
 
         ax = fig.add_axes(
             pos,
-            projection="polar",
+            projection=projection,
         )
     else:
-        ax = fig.add_subplot(pos, projection="polar")
+        ax = fig.add_subplot(pos, projection=projection)
 
-    if theta_behaviour == "pixels":
-        ax.set_theta_offset(np.deg2rad(camera.rotation[-1]))
-    elif theta_behaviour == "bearing":
-        ax.set_theta_offset(np.pi / 2)
-        ax.set_theta_direction(-1)
-    elif theta_behaviour == "unflipped_ordinal_aligned":
-        ax.set_theta_offset(np.pi / 2)
-        # ax.set_theta_direction(-1)
-    else:
-        raise ValueError(
-            "theta_behaviour must be one of 'pixels', 'bearing', or 'unflipped_ordinal_aligned'"
-        )
+    if projection == "polar":
+        if theta_behaviour == "pixels":
+            ax.set_theta_offset(np.deg2rad(camera.rotation[-1]))
+        elif theta_behaviour == "bearing":
+            ax.set_theta_offset(np.pi / 2)
+            ax.set_theta_direction(-1)
+        elif theta_behaviour == "unflipped_ordinal_aligned":
+            ax.set_theta_offset(np.pi / 2)
+            # ax.set_theta_direction(-1)
+        else:
+            raise ValueError(
+                "theta_behaviour must be one of 'pixels', 'bearing', or 'unflipped_ordinal_aligned'"
+            )
     return ax

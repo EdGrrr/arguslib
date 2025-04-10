@@ -152,7 +152,10 @@ class CameraArray(PlottableInstrument):
                 constrained_layout=True,
             )
         else:
-            return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
+            if isinstance(ax, np.ndarray):
+                axes = ax
+            else:
+                return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
 
         fail_counts = 0
         for i in range(self.layout_shape[0]):
@@ -164,7 +167,11 @@ class CameraArray(PlottableInstrument):
                     if self.positions[i_cam] == (i, j)
                 ]
                 if len(camera) == 0:
-                    ax.remove()
+                    try:
+                        ax.remove()
+                    except KeyError:
+                        # if the axis is already removed, we can just ignore it
+                        pass
                     continue
                 camera = camera[0]
                 ax = camera.show(
