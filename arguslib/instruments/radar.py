@@ -130,7 +130,7 @@ class Radar(Instrument):
         return ax
 
     def annotate_positions(
-        self, positions, dt, ax, *args, plotting_method=None, **kwargs
+        self, positions, dt, ax, *args, plotting_method=None, label=None, **kwargs
     ):
         # project the positions to the xy plane...
         xlims = ax.get_xlim()

@@ -57,6 +57,8 @@ class AircraftInterface(PlottableInstrument):
         dt,
         ax,
         color_icao=True,
+        label_acft=False,
+        icao_include: list = None,
         plot_kwargs={},
         plot_trails_kwargs={},
         plot_plane_kwargs={},
@@ -66,7 +68,9 @@ class AircraftInterface(PlottableInstrument):
         trail_latlons = self.get_trails(dt, **kwargs)
         trail_alts_geom = self.fleet.get_data(dt, "alt_geom", tlen=kwargs["tlen"])
 
-        current_data = self.fleet.get_current(dt, ["lon", "lat", "alt_geom"])
+
+        if icao_include is not None:
+            trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
         for acft in trail_latlons.keys():
             if (
@@ -95,6 +99,7 @@ class AircraftInterface(PlottableInstrument):
                 ax,
                 color="r" if not color_icao else f"#{acft}",
                 lw=1,
+                label=f"{acft}" if label_acft else None,
                 **(plot_kwargs | plot_trails_kwargs),
             )
             self.camera.annotate_positions(
