@@ -34,3 +34,21 @@ def xy_offset_to_ll(lon1, lat1, xoff, yoff):
         lon1 + (xoff / (111.111 * np.cos(np.deg2rad(lat1)))),
         lat1 + (yoff / 111.111),
     )
+    
+
+def hPa_to_ft(press):
+    return 145366.45 * (1 - (press / 1013.25) ** 0.190284)  # 100x the original
+
+def ft_to_km(ft):
+    return ft * 0.0003048
+
+def hPa_to_km(press):
+    return ft_to_km(hPa_to_ft(press))
+
+def ft_to_hPa(ft):
+    meters = ft * 0.3048
+    return 1013.25 * (1 - (meters / 44330.0)) ** 5.255
+
+def km_to_hPa(km):
+    meters = km * 1000
+    return 1013.25 * (1 - (meters / 44330.0)) ** 5.255
