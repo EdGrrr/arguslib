@@ -148,7 +148,7 @@ class Radar(Instrument):
 
         azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
 
-        theta_seps = azimuths - azimuth
+        theta_seps = azimuths % 360 - azimuth % 360
         offsets = dists * np.sin(
             np.deg2rad(theta_seps)
         )  # dist btwn object and radar plane
@@ -160,11 +160,66 @@ class Radar(Instrument):
         # xaxis runs west to east, so if azimuth % 360 > 180, then the x axis is flipped
         if azimuth > 90 and azimuth < 270:
             xs = -xs
-        plot_filter = (np.abs(offsets) < 5) & (xs > xlims[0]) & (xs < xlims[1])
+        plot_filter = (np.abs(offsets) < 2.5) & (xs > xlims[0]) & (xs < xlims[1])
         if not plot_filter.any():
             return
         if plotting_method is None:
             ax.plot(xs[plot_filter], ys[plot_filter], *args, **kwargs)
+        elif plotting_method == "sized_plot":
+            # vary the size based on the offset
+            sizes = 1 / np.clip(np.abs(offsets[plot_filter]), 0, 5) * 10
+            ax.plot(
+                xs[plot_filter],
+                ys[plot_filter],
+                *args,
+                label=label,
+                **kwargs,
+            )
+            ax.scatter(
+                xs[plot_filter],
+                ys[plot_filter],
+                s=sizes,
+                *args,
+                **kwargs,
+            )
+        elif plotting_method == "intersect_plot":
+            ax.plot(
+                xs[plot_filter],
+                ys[plot_filter],
+                *args,
+                label=label,
+                **kwargs,
+            )
+            # where do we go theta_seps +ve to -ve
+            shift_indices = np.argwhere(
+                (np.diff(np.sign(offsets)) != 0)
+                & ~np.isnan(offsets[:-1])
+                & ~np.isnan(offsets[1:])
+            )[:, 0]
+            # fit for x and y where offsets = 0
+            doffset_dx = (offsets[shift_indices] - offsets[shift_indices + 1]) / (
+                xs[shift_indices] - xs[shift_indices + 1]
+            )
+            doffset_dy = (offsets[shift_indices] - offsets[shift_indices + 1]) / (
+                ys[shift_indices] - ys[shift_indices + 1]
+            )
+            x_intersect = xs[shift_indices] - offsets[shift_indices] / doffset_dx
+            y_intersect = ys[shift_indices] - offsets[shift_indices] / doffset_dy
+
+            if plot_filter.any():
+                print(shift_indices)
+                print(theta_seps[shift_indices], theta_seps[shift_indices + 1])
+                print(offsets[shift_indices], offsets[shift_indices - 1])
+                print(xs[shift_indices], xs[shift_indices - 1])
+                print(doffset_dx, doffset_dy)
+
+            ax.scatter(  # should determine the actual intersection point and then put a blob there...
+                x_intersect,
+                y_intersect,
+                s=5,
+                *args,
+                **kwargs,
+            )
         else:
             getattr(ax, plotting_method)(
                 xs[plot_filter], ys[plot_filter], *args, **kwargs

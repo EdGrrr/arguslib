@@ -66,6 +66,25 @@ class RadarInterface(PlottableInstrument):
             **kwargs_beam,
         )
 
+        # get the cross-scan bounding box at 10km.
+        pos_start_10km = self.radar.position.ead_to_lla(*elev_azi_start, 10)
+        # displace by pm5km
+        orthogonal_direction = (elev_azi_start[1] + 90) % 360
+        position_corners = [
+            pos_start_10km.ead_to_lla(0, orthogonal_direction, 2.5),
+            pos_start_10km.ead_to_lla(0, orthogonal_direction, -2.5),
+        ]
+
+        pos_end_10km = self.radar.position.ead_to_lla(*elev_azi_end, 10)
+        position_corners += [
+            pos_end_10km.ead_to_lla(0, orthogonal_direction, -2.5),
+            pos_end_10km.ead_to_lla(0, orthogonal_direction, 2.5),
+        ]
+        position_corners += [position_corners[0]]
+        self.camera.annotate_positions(
+            position_corners, dt, ax=ax, color="yellow", linewidth=1
+        )
+
         if show_legend:
             try:
                 ax.legend()
