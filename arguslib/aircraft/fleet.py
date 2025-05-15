@@ -76,7 +76,7 @@ class AircraftPos:
         # returns lon/lat positions for a given edge of the plume
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution
+        index = daysec // self.time_resolution + 1
         length = (tlen / self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
@@ -154,13 +154,13 @@ class AircraftPos:
 
         return track_pos
 
-    def get_track(self, dtime, tlen=2 * 60 * 60):
+    def get_track(self, dtime, tlen=2 * 60 * 60, include_time=False):
         # Provide the historical locations for the aircraft for some
         # period 'tlen' seconds behind the aircraft for a given time
         # 'dtime'
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution
+        index = daysec // self.time_resolution + 1
         length = (tlen / self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
@@ -169,8 +169,8 @@ class AircraftPos:
         lon = self.positions[startind:index, self.variables.index("lon")]
         lat = self.positions[startind:index, self.variables.index("lat")]
         alt = self.positions[startind:index, self.variables.index("alt_geom")]
+        return np.array([lon, lat, alt] + ([times] if include_time else []))
 
-        return np.array([lon, lat, alt])
 
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
         #'Data' here is constant (it does not vary with
@@ -220,8 +220,8 @@ class Aircraft:
         acdata["atype"] = self.atype
         return acdata
 
-    def get_track(self, dtime, tlen=2 * 60 * 60):
-        return self.pos.get_track(dtime, tlen)
+    def get_track(self, dtime, tlen=2 * 60 * 60, include_time=False):
+        return self.pos.get_track(dtime, tlen, include_time=include_time)
 
     def get_trail(
         self,
@@ -356,10 +356,14 @@ class Fleet:
                 acdata[ac] = tempdata
         return acdata
 
-    def get_tracks(self, dtime, tlen=2 * 60 * 60):
+    def get_tracks(self, dtime, tlen=2 * 60 * 60, include_time=False):
+        """Returns unadvected track position (lon, lat, alt, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)
+
+        Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
+        """
         tracks = {}
         for ac in self.aircraft.keys():
-            tracks[ac] = self.aircraft[ac].get_track(dtime, tlen)
+            tracks[ac] = self.aircraft[ac].get_track(dtime, tlen, include_time=include_time)
         return tracks
 
     def get_trails(
@@ -370,7 +374,7 @@ class Fleet:
         wind_filter=-1,
         include_time=False,
     ):
-        """Returns trail position for now and every previous 15 sec until tlen (in min)
+        """Returns trail position (lon, lat, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)
 
         Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
         """
