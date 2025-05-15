@@ -143,6 +143,9 @@ class Camera(Instrument):
         brightness_adjust=1.0,
         **kwargs,
     ):
+        """Show the nearest possible timestamp.
+        
+        Limited by camera time resolution (5s)"""
         defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
         if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
@@ -163,7 +166,7 @@ class Camera(Instrument):
         theta_behaviour = kwargs.pop("theta_behaviour")
 
         if ax is None:
-            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, **kwargs)
+            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, dt=dt, **kwargs)
 
         is_polar = hasattr(ax, "set_theta_zero_location")
 
@@ -182,7 +185,8 @@ class Camera(Instrument):
         plot_range_rings(self, dt, ax=ax)
 
         try:
-            img = self.get_data_time(dt)
+            img, timestamp = self.get_data_time(dt, return_timestamp=True)
+            ax.get_figure().timestamp = timestamp
         except FileNotFoundError as e:
             if fail_if_no_data:
                 raise e

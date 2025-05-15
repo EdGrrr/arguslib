@@ -65,9 +65,10 @@ class AircraftInterface(PlottableInstrument):
         **kwargs,
     ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
-        trail_latlons = self.get_trails(dt, **kwargs)
-        trail_alts_geom = self.fleet.get_data(dt, "alt_geom", tlen=kwargs["tlen"])
+        trail_latlons = self.get_trails(ax.get_figure().timestamp, **kwargs)
+        trail_alts_geom = self.fleet.get_data(ax.get_figure().timestamp, "alt_geom", tlen=kwargs["tlen"])
 
+        current_data = self.fleet.get_current(ax.get_figure().timestamp, ["lon", "lat", "alt_geom"])
 
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
@@ -95,7 +96,7 @@ class AircraftInterface(PlottableInstrument):
             ]
             self.camera.annotate_positions(
                 positions,
-                dt,
+                ax.get_figure().timestamp,
                 ax,
                 color="r" if not color_icao else f"#{acft}",
                 lw=1,
@@ -104,7 +105,7 @@ class AircraftInterface(PlottableInstrument):
             )
             self.camera.annotate_positions(
                 positions[-1:],
-                dt,
+                ax.get_figure().timestamp,
                 ax,
                 color="r",
                 marker="o",

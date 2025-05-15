@@ -1,5 +1,5 @@
 from arguslib.instruments.instruments import Instrument, Position
-from arguslib.misc.plotting import plot_beam
+from arguslib.misc.plotting import TimestampedFigure, plot_beam
 
 
 import numpy as np
@@ -104,7 +104,7 @@ class Radar(Instrument):
         import matplotlib.pyplot as plt
 
         if ax is None:
-            _, ax = plt.subplots()
+            _, ax = plt.subplots(FigureClass=TimestampedFigure, timestamp=dt)
         radar = self.data_loader.get_pyart_radar(dt)
         display = pyart.graph.RadarDisplay(radar)
 

@@ -1,6 +1,17 @@
+from re import L
 from arguslib.instruments.instruments import Position
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+
+class TimestampedFigure(Figure):
+    def __init__(self, *args, **kwargs):
+        timestamp = kwargs.pop("timestamp", None)
+        if timestamp is None:
+            raise ValueError("Timestamped figures need a timestamp property.")
+        self.timestamp = timestamp
+        Figure.__init__(self, *args, **kwargs)
+        
 
 
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
@@ -120,10 +131,10 @@ def get_pixel_transform(camera, ax, lr_flip=True):
 
 
 def make_camera_axes(
-    camera, theta_behaviour="bearing", fig=None, pos=111, replace_ax=None
+    camera, theta_behaviour="bearing", fig=None, pos=111, replace_ax=None, dt=None
 ):
     if fig is None:
-        fig = plt.figure()
+        fig = plt.figure(FigureClass=TimestampedFigure, timestamp=dt)
 
     if camera.camera_type == "perspective":
         projection = None

@@ -17,6 +17,7 @@ class Video:
         self.time_bounds = self.get_timestamps([0, self.n_frames - 1])
 
     def get_data_time(self, dt, return_timestamp=False):
+        """Gets image data at the nearest possible timestamp. Images have 5 second time resolution."""
         n = self.estimate_frame_number(dt)
         n = np.round(n).astype(int)
         frame = self.get_frame(n)

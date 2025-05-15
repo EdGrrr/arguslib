@@ -7,7 +7,7 @@ from arguslib.instruments.instruments import PlottableInstrument
 from ..instruments.radar import Radar
 
 from ..instruments.camera import Camera
-from ..misc.plotting import plot_beam
+from ..misc.plotting import TimestampedFigure, plot_beam
 
 
 class RadarInterface(PlottableInstrument):
@@ -89,8 +89,10 @@ class RadarInterface(PlottableInstrument):
             2,
             figsize=(10, 4.2),
             dpi=300,
-            width_ratios=[1.5, 2],
-            constrained_layout=True,
+            width_ratios=[0.8, 1.2],
+            FigureClass=TimestampedFigure,
+            timestamp=dt,
+            # constrained_layout=True,
         )
         ax_cam = self.show_camera(
             dt, ax=ax_cam, kwargs_beam=kwargs_beam, **kwargs_camera

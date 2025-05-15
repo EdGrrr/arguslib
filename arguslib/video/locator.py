@@ -30,7 +30,7 @@ class CameraData:
         self.video = None
         self.current_video_path = None
 
-    def get_data_time(self, dt):
+    def get_data_time(self, dt, return_timestamp=False):
         filepath = self.get_video_file(dt)
 
         if filepath is None:
@@ -43,7 +43,7 @@ class CameraData:
             self.current_video_path = filepath
 
         try:
-            return self.video.get_data_time(dt)
+            return self.video.get_data_time(dt, return_timestamp=return_timestamp)
         except ValueError as e:
             # Likely a "not in time bounds" error - happens when we are "between two frames"
             # if we are at the start, return the first frame if its within a minute
@@ -51,13 +51,13 @@ class CameraData:
                 dt < self.video.time_bounds[0]
                 and (self.video.time_bounds[0] - dt).seconds < 60
             ):
-                return self.video.get_data_time(self.video.time_bounds[0])
+                return self.video.get_data_time(self.video.time_bounds[0], return_timestamp=return_timestamp)
             # if we are at the end, return the last frame if its within a minute
             elif (
                 dt > self.video.time_bounds[1]
                 and (dt - self.video.time_bounds[1]).seconds < 60
             ):
-                return self.video.get_data_time(self.video.time_bounds[1])
+                return self.video.get_data_time(self.video.time_bounds[1], return_timestamp=return_timestamp)
             else:
                 raise e
 
