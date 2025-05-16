@@ -153,6 +153,27 @@ class AircraftPos:
             return track_pos, track_leftpos, track_rightp
 
         return track_pos
+    
+    def interpolate_position(self, dtime):
+        daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
+        offset = daysec % self.time_resolution
+        index = daysec // self.time_resolution + 1
+        
+        daysec_us = daysec + dtime.microsecond*1e-6
+
+        time = (daysec_us - self.times)[
+            index:index+2 # time before and after
+        ]  # Time since the aircraft passed this point
+        lon = self.positions[index:index+2, self.variables.index("lon")]
+        lat = self.positions[index:index+2, self.variables.index("lat")]
+        alt = self.positions[index:index+2, self.variables.index("alt_geom")]
+        
+        pos = np.array([lon, lat, alt])
+        dpos_dtime = (pos[:, 1] - pos[:, 0]) / (time[1] - time[0])
+        pos = pos[:, 0] + (0 - time[0]) * dpos_dtime
+        
+        return pos
+
 
     def get_track(self, dtime, tlen=2 * 60 * 60, include_time=False):
         # Provide the historical locations for the aircraft for some

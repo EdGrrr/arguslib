@@ -1,3 +1,4 @@
+from arguslib.misc.geo import ft_to_km
 import numpy as np
 
 from arguslib.instruments.instruments import PlottableInstrument
@@ -68,8 +69,6 @@ class AircraftInterface(PlottableInstrument):
         trail_latlons = self.get_trails(ax.get_figure().timestamp, **kwargs)
         trail_alts_geom = self.fleet.get_data(ax.get_figure().timestamp, "alt_geom", tlen=kwargs["tlen"])
 
-        current_data = self.fleet.get_current(ax.get_figure().timestamp, ["lon", "lat", "alt_geom"])
-
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
@@ -82,17 +81,17 @@ class AircraftInterface(PlottableInstrument):
 
             lons = trail_latlons[acft][0]
             lats = trail_latlons[acft][1]
-            alts_m = trail_alts_geom[acft]["alt_geom"] / (3.33 * 1000)
+            alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
 
-            if current_data[acft]["lat"] != -9999999:
-                lons = np.append(lons, current_data[acft]["lon"])
-                lats = np.append(lats, current_data[acft]["lat"])
-                alts_m = np.append(
-                    alts_m, current_data[acft]["alt_geom"] / (3.33 * 1000)
-                )
+            current_pos = self.fleet.aircraft[acft].pos.interpolate_position(dt)
+            lons = np.append(lons, current_pos[0])
+            lats = np.append(lats, current_pos[1])
+            alts_km = np.append(
+                alts_km, ft_to_km(current_pos[2])
+            )
 
             positions = [
-                Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_m)
+                Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_km)
             ]
             self.camera.annotate_positions(
                 positions,
