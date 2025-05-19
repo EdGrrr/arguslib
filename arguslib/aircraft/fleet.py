@@ -173,6 +173,22 @@ class AircraftPos:
         pos = pos[:, 0] + (0 - time[0]) * dpos_dtime
         
         return pos
+    
+    def get_heading(self, dtime):
+        daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
+        offset = daysec % self.time_resolution
+        index = daysec // self.time_resolution + 1
+        
+        daysec_us = daysec + dtime.microsecond*1e-6
+
+        time = (daysec_us - self.times)[
+            index:index+2 # time before and after
+        ]  # Time since the aircraft passed this point
+        lon = self.positions[index:index+2, self.variables.index("lon")]
+        lat = self.positions[index:index+2, self.variables.index("lat")]
+        
+        bearing = geo.calculate_bearing(lat[0], lon[0], lat[1], lon[1])
+        return bearing
 
 
     def get_track(self, dtime, tlen=2 * 60 * 60, include_time=False):

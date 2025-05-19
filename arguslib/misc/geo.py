@@ -34,6 +34,24 @@ def xy_offset_to_ll(lon1, lat1, xoff, yoff):
         lon1 + (xoff / (111.111 * np.cos(np.deg2rad(lat1)))),
         lat1 + (yoff / 111.111),
     )
+
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    # Convert from degrees to radians
+    lat1 = np.radians(lat1)
+    lon1 = np.radians(lon1)
+    lat2 = np.radians(lat2)
+    lon2 = np.radians(lon2)
+
+    dlon = lon2 - lon1
+
+    x = np.sin(dlon) * np.cos(lat2)
+    y = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+
+    initial_bearing = np.arctan2(x, y)
+    
+    # Convert to degrees and normalize
+    bearing = (np.degrees(initial_bearing) + 360) % 360
+    return bearing
     
 
 def hPa_to_ft(press):
