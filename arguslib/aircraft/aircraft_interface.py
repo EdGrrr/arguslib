@@ -66,8 +66,19 @@ class AircraftInterface(PlottableInstrument):
         **kwargs,
     ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
-        trail_latlons = self.get_trails(ax.get_figure().timestamp, **kwargs)
-        trail_alts_geom = self.fleet.get_data(ax.get_figure().timestamp, "alt_geom", tlen=kwargs["tlen"])
+        
+        if ax is None:
+            # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
+            timestamp = self.camera.data_loader.current_image_time
+        else:
+            try:
+                timestamp = ax.get_figure().timestamp
+            except AttributeError:
+                timestamp = ax[-1].get_figure().timestamp
+            
+        
+        trail_latlons = self.get_trails(timestamp, **kwargs)
+        trail_alts_geom = self.fleet.get_data(timestamp, "alt_geom", tlen=kwargs["tlen"])
 
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
@@ -83,7 +94,7 @@ class AircraftInterface(PlottableInstrument):
             lats = trail_latlons[acft][1]
             alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
 
-            current_pos = self.fleet.aircraft[acft].pos.interpolate_position(dt)
+            current_pos = self.fleet.aircraft[acft].pos.interpolate_position(timestamp)
             lons = np.append(lons, current_pos[0])
             lats = np.append(lats, current_pos[1])
             alts_km = np.append(
@@ -95,7 +106,7 @@ class AircraftInterface(PlottableInstrument):
             ]
             self.camera.annotate_positions(
                 positions,
-                ax.get_figure().timestamp,
+                timestamp,
                 ax,
                 color="r" if not color_icao else f"#{acft}",
                 lw=1,
@@ -104,7 +115,7 @@ class AircraftInterface(PlottableInstrument):
             )
             self.camera.annotate_positions(
                 positions[-1:],
-                ax.get_figure().timestamp,
+                timestamp,
                 ax,
                 color="r",
                 marker="o",

@@ -15,8 +15,8 @@ class TimestampedFigure(Figure):
 
 
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
-    if ax is None:
-        ax = plt.gca()
+    # if ax is None:
+    #     ax = plt.gca()
 
     range_out = {}
     kwargs = {"c": "orange", "lw": 0.7} | kwargs

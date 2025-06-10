@@ -206,12 +206,12 @@ class Radar(Instrument):
             x_intersect = xs[shift_indices] - offsets[shift_indices] / doffset_dx
             y_intersect = ys[shift_indices] - offsets[shift_indices] / doffset_dy
 
-            if plot_filter.any():
-                print(shift_indices)
-                print(theta_seps[shift_indices], theta_seps[shift_indices + 1])
-                print(offsets[shift_indices], offsets[shift_indices - 1])
-                print(xs[shift_indices], xs[shift_indices - 1])
-                print(doffset_dx, doffset_dy)
+            # if plot_filter.any():
+            #     print(shift_indices)
+            #     print(theta_seps[shift_indices], theta_seps[shift_indices + 1])
+            #     print(offsets[shift_indices], offsets[shift_indices - 1])
+            #     print(xs[shift_indices], xs[shift_indices - 1])
+            #     print(doffset_dx, doffset_dy)
 
             ax.scatter(  # should determine the actual intersection point and then put a blob there...
                 x_intersect,
