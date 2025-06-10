@@ -23,8 +23,8 @@ class AircraftPos:
         self.variables = variables
         self.positions = np.full(
             (60 * 60 * 24 // time_resolution, len(self.variables)), np.nan
-        )
-        self.time_resolution = time_resolution
+        ) # index 0  is at midnight. index 1 is at T, index 2 is 2T
+        self.time_resolution = time_resolution # T in seconds
         self.last_update = None
         self.times = np.arange(0, 60 * 60 * 24, self.time_resolution)
 
@@ -76,8 +76,8 @@ class AircraftPos:
         # returns lon/lat positions for a given edge of the plume
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1
-        length = (tlen / self.time_resolution) + 2  # For before+after slots
+        index = daysec // self.time_resolution + 1 # Index immediately after requested dt (slices go up to this value, not including it)
+        length = (tlen / self.time_resolution) + 2
         startind = int(max(0, index - length))
 
         times = (daysec - self.times)[
@@ -88,10 +88,11 @@ class AircraftPos:
         track = self.positions[startind:index, self.variables.index("track")]
         ws = self.positions[startind:index, self.variables.index("ws")]
         wd = self.positions[startind:index, self.variables.index("wd")]
-        wind_u, wind_v = (
-            -0.51444 * ws * np.sin(np.deg2rad(wd)),
+        wind_u, wind_v = ( # negative sign because these are "metorological wind directions" (e.g. coming from this direction)
+            -0.51444 * ws * np.sin(np.deg2rad(wd)), # knots to m/s
             -0.51444 * ws * np.cos(np.deg2rad(wd)),
         )
+            
         if wind_filter > 0:
 
             def wind_conv_filter(wval, wind_filter):
@@ -107,11 +108,6 @@ class AircraftPos:
 
             wind_u = wind_conv_filter(wind_u, wind_filter)
             wind_v = wind_conv_filter(wind_v, wind_filter)
-
-        acft_u, acft_v = (
-            0.51444 * gs * np.sin(np.deg2rad(track)),
-            0.51444 * gs * np.cos(np.deg2rad(track)),
-        )
 
         track_offset_km = np.array([wind_u, wind_v]) * times / 1000
 
@@ -157,12 +153,15 @@ class AircraftPos:
     def interpolate_position(self, dtime):
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1
+        index = daysec // self.time_resolution 
+        # index before the current pos
+        # different to get_trail's index, which indexes up to (and includes) this.
         
         daysec_us = daysec + dtime.microsecond*1e-6
 
+        # Collect the values either side of the aircraft
         time = (daysec_us - self.times)[
-            index:index+2 # time before and after
+            index:index+2
         ]  # Time since the aircraft passed this point
         lon = self.positions[index:index+2, self.variables.index("lon")]
         lat = self.positions[index:index+2, self.variables.index("lat")]
@@ -177,7 +176,7 @@ class AircraftPos:
     def get_heading(self, dtime):
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1
+        index = daysec // self.time_resolution
         
         daysec_us = daysec + dtime.microsecond*1e-6
 
@@ -197,7 +196,7 @@ class AircraftPos:
         # 'dtime'
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1
+        index = daysec // self.time_resolution + 1 # index immediately after current
         length = (tlen / self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
@@ -216,7 +215,7 @@ class AircraftPos:
         # aircraft position/time (unlike aircraft type, for example)
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution
+        index = daysec // self.time_resolution + 1 # index immediately after current
         length = (tlen / self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
