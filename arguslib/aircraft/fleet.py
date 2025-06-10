@@ -3,9 +3,16 @@ import netCDF4
 import tqdm
 
 from ..misc import geo
+import xarray as xr
 
 # Need some system to maintain aircraft position inforamtion
 # 4 * 60 * 24 = ~6000 slots per day per aircraft, would need to store lon, lat, alt, speed, direction along with some aircarft metadata (where required).
+
+try:
+    from csat2.ECMWF import ERA5WindData
+    ERA5_DATA_HANDLER = ERA5WindData('250hPa')
+except ImportError:
+    ERA5_DATA_HANDLER = None
 
 
 def jsonfloat(value):
@@ -68,6 +75,7 @@ class AircraftPos:
         tlen=2 * 60 * 60,
         spread_velocity=-1,
         wind_filter=-1,
+        winds='era5',
         include_time=False,
     ):
         # The advected flight locations (based on the aircraft
@@ -86,12 +94,27 @@ class AircraftPos:
 
         gs = self.positions[startind:index, self.variables.index("gs")]
         track = self.positions[startind:index, self.variables.index("track")]
-        ws = self.positions[startind:index, self.variables.index("ws")]
-        wd = self.positions[startind:index, self.variables.index("wd")]
-        wind_u, wind_v = ( # negative sign because these are "metorological wind directions" (e.g. coming from this direction)
-            -0.51444 * ws * np.sin(np.deg2rad(wd)), # knots to m/s
-            -0.51444 * ws * np.cos(np.deg2rad(wd)),
-        )
+        lon = self.positions[startind:index, self.variables.index("lon")]
+        lat = self.positions[startind:index, self.variables.index("lat")]
+        
+        if winds == 'aircraft':
+            ws = self.positions[startind:index, self.variables.index("ws")]
+            wd = self.positions[startind:index, self.variables.index("wd")]
+            wind_u, wind_v = ( # negative sign because these are "metorological wind directions" (e.g. coming from this direction)
+                -0.51444 * ws * np.sin(np.deg2rad(wd)), # knots to m/s
+                -0.51444 * ws * np.cos(np.deg2rad(wd)),
+            )
+        elif winds == 'era5':
+            # FIXME: this is really slow. I have to do so much indexing every time advect to a different timestep.
+            wind_u, wind_v = ERA5_DATA_HANDLER.get_data_time(dtime)
+            ds_track = xr.Dataset(
+                {'lon':('points', lon % 360), 'lat':('points', lat % 360)}
+            )
+            wind_u = wind_u.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
+            wind_v = wind_v.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
+            
+            
+            
             
         if wind_filter > 0:
 
@@ -111,8 +134,6 @@ class AircraftPos:
 
         track_offset_km = np.array([wind_u, wind_v]) * times / 1000
 
-        lon = self.positions[startind:index, self.variables.index("lon")]
-        lat = self.positions[startind:index, self.variables.index("lat")]
 
         if not include_time:
             track_pos = np.array(geo.xy_offset_to_ll(lon, lat, *track_offset_km))
@@ -378,6 +399,9 @@ class Fleet:
                 )
                 for vind, vname in enumerate(self.variables):
                     self.aircraft[acft_name].pos.positions = var_data[:, aind].T
+                    
+                    
+        
 
         self.loaded_file = filename
 
