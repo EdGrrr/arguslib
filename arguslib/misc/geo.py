@@ -70,3 +70,34 @@ def ft_to_hPa(ft):
 def km_to_hPa(km):
     meters = km * 1000
     return 1013.25 * (1 - (meters / 44330.0)) ** 5.255
+
+
+def xr_add_cyclic_points(da):
+    """
+    Add cyclic points at start and end of `lon` dimension of data array.
+    
+    From StackExchange.
+    
+    Inputs
+    da: xr.DataArray including dimensions (lat,lon)
+    """
+    import xarray as xr
+    # Borrows heavily from cartopy.util.add_cyclic point, but adds at start and end.
+
+    lon_idx = da.dims.index('lon')
+    
+    start_slice = [slice(None)] * da.ndim
+    end_slice = [slice(None)] * da.ndim
+    start_slice[lon_idx] = slice(0, 1)
+    end_slice[lon_idx] = slice(-1, None)
+    
+    wrap_data = np.concatenate([da.values[tuple(end_slice)], da.values, da.values[tuple(start_slice)]], axis=lon_idx)
+    wrap_lon = np.concatenate([da.lon.values[-1:] - 360, da.lon.values, da.lon.values[0:1] + 360])
+
+    # Generate output DataArray with new data but same structure as input
+    outp_da = xr.DataArray(data=wrap_data, 
+                           coords=dict(lat=da.lat, lon=wrap_lon), 
+                           dims=da.dims, 
+                           attrs=da.attrs)
+    
+    return outp_da

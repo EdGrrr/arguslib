@@ -22,7 +22,7 @@ radar = Radar.from_config("COBALT")
 cam = UndistortedCamera.from_config("COBALT", "3-7")
 # cam = CameraArray.from_config("COBALTArray")
 cri = RadarInterface(radar, cam)
-cai = AircraftInterface(cri)
+cai = AircraftInterface(cri) 
 
 dt = datetime.datetime(2025, 5, 11, 11, 46, 57)
 
@@ -31,10 +31,12 @@ if cai.fleet.loaded_file != str(adsb_file):
     cai.fleet.load_output(str(adsb_file))
 
 
+# %% replace cai.show with cri.show to just plot the radar and camera
+cai.fleet.assign_era5_winds()
 # %%
 ax_cam, ax_radar = cai.show(
     dt,
-    tlen=1*60 * 60,
+    tlen=2*60 * 60,
     color_icao=True,
     trail_kwargs={
         "label_acft": True,
@@ -47,6 +49,7 @@ ax_cam, ax_radar = cai.show(
             "alpha": 0.5,
             "radar_kwargs": {"plotting_method": "intersect_plot"},
         },
+        # "advection_winds":'aircraft'
     },
     # kwargs_camera={"brightness_adjust": 2.0},
 )

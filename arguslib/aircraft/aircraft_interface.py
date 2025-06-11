@@ -63,6 +63,7 @@ class AircraftInterface(PlottableInstrument):
         plot_kwargs={},
         plot_trails_kwargs={},
         plot_plane_kwargs={},
+        advection_winds="era5",
         **kwargs,
     ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
@@ -76,7 +77,7 @@ class AircraftInterface(PlottableInstrument):
             except AttributeError:
                 timestamp = ax[-1].get_figure().timestamp
             
-        
+        kwargs['winds'] = advection_winds
         trail_latlons = self.get_trails(timestamp, **kwargs)
         trail_alts_geom = self.fleet.get_data(timestamp, "alt_geom", tlen=kwargs["tlen"])
 

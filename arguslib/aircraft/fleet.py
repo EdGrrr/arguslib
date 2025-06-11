@@ -1,3 +1,4 @@
+from arguslib.misc.met import download_era5_winds
 import numpy as np
 import netCDF4
 import tqdm
@@ -10,9 +11,19 @@ import xarray as xr
 
 try:
     from csat2.ECMWF import ERA5WindData
-    ERA5_DATA_HANDLER = ERA5WindData('250hPa')
+    ERA5_LEVELS = [
+        "150hPa",
+        "175hPa",
+        "200hPa",
+        "225hPa",
+        "250hPa",
+        "300hPa",
+        "350hPa"
+    ]
+    ERA5_DATA_HANDLER = {lvl: ERA5WindData(lvl) for lvl in ERA5_LEVELS}
 except ImportError:
     ERA5_DATA_HANDLER = None
+    ERA5_LEVELS = {}
 
 
 def jsonfloat(value):
@@ -105,14 +116,29 @@ class AircraftPos:
                 -0.51444 * ws * np.cos(np.deg2rad(wd)),
             )
         elif winds == 'era5':
-            # FIXME: this is really slow. I have to do so much indexing every time advect to a different timestep.
-            wind_u, wind_v = ERA5_DATA_HANDLER.get_data_time(dtime)
-            ds_track = xr.Dataset(
-                {'lon':('points', lon % 360), 'lat':('points', lat % 360)}
-            )
-            wind_u = wind_u.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
-            wind_v = wind_v.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
-            
+            alt_geom = self.positions[startind:index, self.variables.index("alt_geom")]
+            try:
+                # --- NEW: Fast path using pre-calculated data ---
+                u_idx = self.variables.index('uwind')
+                v_idx = self.variables.index('vwind')
+                wind_u = self.positions[startind:index, u_idx]
+                wind_v = self.positions[startind:index, v_idx]
+
+                # If data is all NaN, it means either there are no valid positions or pre-calculation wasn't run or failed.
+                has_valid_pos = np.any(np.isfinite(lon) & np.isfinite(lat) & np.isfinite(alt_geom))
+                if has_valid_pos and (np.all(np.isnan(wind_u)) or np.all(np.isnan(wind_v))):
+                     raise ValueError("Pre-calculated ERA5 winds are all NaN.")
+
+            except (ValueError, IndexError) as e:
+                raise ValueError("ERA5 data not on fleet! Using aircraft wind advection, or loading ERA5.")
+                # --- OLD: Fallback to slow on-the-fly calculation ---
+                # FIXME: this is really slow. I have to do so much indexing every time advect to a different timestep.
+                wind_u, wind_v = ERA5_DATA_HANDLER.get_data_time(dtime)
+                ds_track = xr.Dataset(
+                    {'lon':('points', lon % 360), 'lat':('points', lat % 360)}
+                )
+                wind_u = wind_u.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
+                wind_v = wind_v.sel(lon=ds_track.lon, lat=ds_track.lat, method='nearest').values
             
             
             
@@ -285,6 +311,7 @@ class Aircraft:
         dtime,
         tlen=2 * 60 * 60,
         spread_velocity=-1,
+        winds='era5',
         wind_filter=-1,
         include_time=False,
     ):
@@ -294,6 +321,7 @@ class Aircraft:
             spread_velocity=spread_velocity,
             wind_filter=wind_filter,
             include_time=include_time,
+            winds=winds
         )
 
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
@@ -433,6 +461,7 @@ class Fleet:
         spread_velocity=-1,
         wind_filter=-1,
         include_time=False,
+        winds='era5',
     ):
         """Returns trail position (lon, lat, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)
 
@@ -446,6 +475,7 @@ class Fleet:
                 spread_velocity=spread_velocity,
                 wind_filter=wind_filter,
                 include_time=include_time,
+                winds=winds,
             )
         return trails
 
@@ -454,3 +484,159 @@ class Fleet:
         for ac in self.aircraft.keys():
             metadata[ac] = self.aircraft[ac].get_data(dtime, vname, tlen)
         return metadata
+    
+    def assign_era5_winds(self):
+        """
+        Pre-calculates and assigns ERA5 wind data (uwind, vwind) to all aircraft positions,
+        using 4D interpolation for time, pressure level, latitude, and longitude.
+
+        This method chunks flight data into the intervals between available ERA5 data points
+        (e.g., 09:00-12:00). For each chunk, it loads the wind fields for the start and
+        end times and performs a single 4D interpolation for all points within it.
+
+        This is intended to be run once after loading data to prevent slow
+        on-the-fly wind lookups during repeated calls to get_trail.
+
+        Raises:
+            RuntimeError: If ERA5_DATA_HANDLER is not available or if data
+                        has not been loaded via load_output.
+            ValueError: If the date cannot be parsed from the loaded filename.
+        """
+        if ERA5_DATA_HANDLER is None:
+            raise RuntimeError("ERA5WindData handler is not available. Please check your csat2 installation.")
+
+        if self.loaded_file is None:
+            raise RuntimeError("Fleet data must be loaded using 'load_output' before assigning wind data.")
+
+        # --- 1. Add uwind and vwind to variables if they don't exist ---
+        new_vars = []
+        if 'uwind' not in self.variables:
+            new_vars.append('uwind')
+        if 'vwind' not in self.variables:
+            new_vars.append('vwind')
+
+        if new_vars:
+            print(f"Adding {new_vars} to fleet variables.")
+            original_var_count = len(self.variables)
+            self.variables.extend(new_vars)
+            for acft in self.aircraft.values():
+                old_positions = acft.pos.positions
+                new_shape = (old_positions.shape[0], len(self.variables))
+                new_positions = np.full(new_shape, np.nan, dtype=np.float32)
+                new_positions[:, :original_var_count] = old_positions
+                acft.pos.positions = new_positions
+                acft.pos.variables = self.variables
+
+        # --- 2. Parse date from filename ---
+        import os
+        import datetime
+        try:
+            fname = os.path.basename(self.loaded_file)
+            date_str = fname.split('_')[0]
+            base_date = datetime.datetime.strptime(date_str, '%Y%m%d')
+        except (ValueError, IndexError):
+            raise ValueError(f"Could not parse date from filename: {self.loaded_file}. Expected format is 'YYYYMMDD_...'.")
+
+        # check if the era5 data is there
+        for level, handler in ERA5_DATA_HANDLER.items():
+            try: handler.get_data_time(base_date)
+            except:
+                download_era5_winds(base_date)
+                return self.assign_era5_winds()
+            
+                
+
+        # --- 3. Get variable indices ---
+        lon_idx = self.variables.index("lon")
+        lat_idx = self.variables.index("lat")
+        alt_idx = self.variables.index("alt_geom")
+        u_idx = self.variables.index("uwind")
+        v_idx = self.variables.index("vwind")
+
+        aircraft_list = list(self.aircraft.values())
+        if not aircraft_list:
+            print("No aircraft in fleet. Aborting wind assignment.")
+            return
+            
+        num_timesteps = aircraft_list[0].pos.positions.shape[0]
+
+        # --- 4. Group points by ERA5 time interval, then process in 4D chunks. ---
+        print("Collecting and grouping all flight positions by time interval...")
+        avail_era5_times = [base_date + datetime.timedelta(hours=hrs) for hrs in range(0, 24, 3)]
+        
+        # Create the time intervals (e.g., (00:00, 03:00), (03:00, 06:00), ...)
+        time_intervals = list(zip(avail_era5_times, avail_era5_times[1:]))
+        
+        # Prepare the data structure for grouping
+        points_by_interval = {interval: {'lons': [], 'lats': [], 'alts': [], 'times': [], 'ac_indices': [], 't_indices': []} for interval in time_intervals}
+
+        for ac_idx, acft in enumerate(tqdm.tqdm(aircraft_list, desc="Grouping flight data")):
+            for t_idx in range(num_timesteps):
+                lon = acft.pos.positions[t_idx, lon_idx]
+                lat = acft.pos.positions[t_idx, lat_idx]
+                alt = acft.pos.positions[t_idx, alt_idx]
+
+                if np.isfinite(lon) and np.isfinite(lat) and np.isfinite(alt):
+                    current_dtime = base_date + datetime.timedelta(seconds=(t_idx * self.time_resolution))
+                    
+                    # Find which time interval this point falls into
+                    for start_t, end_t in time_intervals:
+                        if start_t <= current_dtime < end_t:
+                            group = points_by_interval[(start_t, end_t)]
+                            group['lons'].append(lon)
+                            group['lats'].append(lat)
+                            group['alts'].append(geo.ft_to_hPa(alt))
+                            group['times'].append(current_dtime)
+                            group['ac_indices'].append(ac_idx)
+                            group['t_indices'].append(t_idx)
+                            break
+
+        # 4b. Process each group with a single large 4D interpolation call.
+        print("Assigning ERA5 wind data to fleet positions...")
+        for (start_t, end_t), group in tqdm.tqdm(points_by_interval.items(), desc="Processing 4D time chunks"):
+            if not group['lons']:
+                continue
+
+            try:
+                # --- Load data for BOTH start and end of the time interval ---
+                def load_3d_wind_field(dtime):
+                    wind_u_3d, wind_v_3d = [], []
+                    for level in ERA5_LEVELS:
+                        wind_u_da, wind_v_da = ERA5_DATA_HANDLER[level].get_data_time(dtime)
+                        wind_u_da = geo.xr_add_cyclic_points(wind_u_da)
+                        wind_v_da = geo.xr_add_cyclic_points(wind_v_da)
+                        wind_u_3d.append(wind_u_da)
+                        wind_v_3d.append(wind_v_da)
+                    
+                    u_field = xr.concat(wind_u_3d, "plevel").assign_coords({"plevel":[float(lvl.removesuffix("hPa")) for lvl in ERA5_LEVELS]})
+                    v_field = xr.concat(wind_v_3d, "plevel").assign_coords({"plevel":[float(lvl.removesuffix("hPa")) for lvl in ERA5_LEVELS]})
+                    return u_field, v_field
+
+                u_field_start, v_field_start = load_3d_wind_field(start_t)
+                u_field_end, v_field_end = load_3d_wind_field(end_t)
+
+                # --- Combine 3D fields into a 4D field for interpolation ---
+                wind_u_4d = xr.concat([u_field_start, u_field_end], dim='time').assign_coords({'time': [start_t, end_t]})
+                wind_v_4d = xr.concat([v_field_start, v_field_end], dim='time').assign_coords({'time': [start_t, end_t]})
+
+                # Create a single large Dataset of points for interpolation, including their exact times
+                ds_track = xr.Dataset({
+                    'lon': ('points', np.array(group['lons']) % 360),
+                    'lat': ('points', np.array(group['lats'])),
+                    'alt': ('points', np.clip(group['alts'], 150., 350.)),
+                    'time': ('points', np.array(group['times'])) # The exact timestamp of each point
+                })
+                
+                # --- Perform one big, efficient 4D interpolation ---
+                u_vals = wind_u_4d.interp(lon=ds_track.lon, lat=ds_track.lat, plevel=ds_track.alt, time=ds_track.time).values
+                v_vals = wind_v_4d.interp(lon=ds_track.lon, lat=ds_track.lat, plevel=ds_track.alt, time=ds_track.time).values
+
+                # Assign all results back to the main data structure
+                for i in range(len(group['lons'])):
+                    ac_idx = group['ac_indices'][i]
+                    t_idx = group['t_indices'][i]
+                    aircraft_list[ac_idx].pos.positions[t_idx, u_idx] = u_vals[i]
+                    aircraft_list[ac_idx].pos.positions[t_idx, v_idx] = v_vals[i]
+
+            except Exception as e:
+                print(f"Warning: Could not process wind chunk for {start_t} to {end_t}: {e}")
