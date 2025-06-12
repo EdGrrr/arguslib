@@ -1,10 +1,14 @@
 # %%
 """Finds the closest image to the one required"""
 
+from arguslib.misc.times import convert_to_london_naive
 from csat2.locator import FileLocator
 import os
 
 from .video import Video
+from zoneinfo import ZoneInfo
+
+from pytz import utc
 
 video_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/videos/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}_{hour:0>2}{min:0>2}{second:0>2}_A.mp4"
 
@@ -70,6 +74,11 @@ class CameraData:
             return self.image
 
     def get_video_file(self, dt):
+        # dt is in utc.
+        # but (TEST) the files are **named** with local time?
+        # get dt object which is timezone naive but 
+        # dt = dt.replace(hour=dt.hour-1)
+        
         files = self.locator.search(
             "ARGUS",
             "video",

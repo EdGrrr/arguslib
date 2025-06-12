@@ -18,8 +18,10 @@ cam.image
 aci = AircraftInterface(cam)
 # Dates with ERA5 data:
 # dt_start = datetime.datetime(2025,3,8,10)
-# dt_start = datetime.datetime(2025,5,11,7,30)
-dt_start = datetime.datetime(2025,4,1,11,00)
+dt_start = datetime.datetime(2025,5,11,7,30)
+# dt_start = datetime.datetime(2025,4,1,11,00)
+# dt_start = datetime.datetime(2025,3,29,7,00)
+
 
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
@@ -29,7 +31,8 @@ outdir.mkdir(exist_ok=True, parents=True)
 adsb_file = adsb_datadir / (dt_start.strftime("%Y%m%d") + "_ADS-B")
 if aci.fleet.loaded_file != str(adsb_file):
     aci.fleet.load_output(str(adsb_file))
-    
+
+# %%
 aci.fleet.assign_era5_winds()
 
 # %%
@@ -45,5 +48,5 @@ aci.show(dt_start)
 aci.camera.image
 
 # %%
-download_era5_winds(dt_start)
+# download_era5_winds(dt_start)
 # %%

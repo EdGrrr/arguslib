@@ -1,7 +1,9 @@
 from arguslib.misc.met import download_era5_winds
+from arguslib.misc.times import convert_to_london_naive
 import numpy as np
 import netCDF4
 import tqdm
+import datetime
 
 from ..misc import geo
 import xarray as xr
@@ -408,13 +410,21 @@ class Fleet:
                 acft, atype = line.strip().split(" ")
                 acft_list.append(acft)
                 acft_types[acft] = atype
-
+                
+        # determine offset based on the date
+        # adsb data is reported in local (UK) time. - in summer, UTC+1.
+        # Determine the offset move that many indices EARLIER
+        file_dtime = datetime.datetime.strptime((filename.split("/")[-1]).split("_")[0], "%Y%m%d")
+        offset = int((convert_to_london_naive(file_dtime.replace(hour=12)) - file_dtime.replace(hour=12)).total_seconds() / self.time_resolution)
+        # TODO: load the data from the adjacent file... only affecting nighttime so it will be fine.
+        
         self.aircraft: dict[str, Aircraft] = {}
         with netCDF4.Dataset(filename + ".nc") as ncdf:
             var_data = []
             for vind, vname in enumerate(self.variables):
-                var_data.append(ncdf.variables[vname])
-            var_data = np.array(var_data)
+                var_data.append(ncdf.variables[vname]) # axes: 0: aircraft, 1: time
+            var_data = np.array(var_data) # axes: 0: variable, 1: aircraft, 2: time
+            var_data = np.concat([var_data[:, :, offset:], np.full((*var_data.shape[:2],offset), np.nan)], axis=-1)
 
             for aind, acft_name in tqdm.tqdm(
                 enumerate(acft_list), desc="Loading ADS-B data", unit="acft"
