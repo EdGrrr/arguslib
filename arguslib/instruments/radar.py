@@ -183,6 +183,7 @@ class Radar(Instrument):
                 **kwargs,
             )
         elif plotting_method == "intersect_plot":
+            
             ax.plot(
                 xs[plot_filter],
                 ys[plot_filter],
@@ -190,6 +191,9 @@ class Radar(Instrument):
                 label=label,
                 **kwargs,
             )
+            # think this has a fit when the length is only one point...
+            if len(xs[plot_filter]) == 1:
+                return
             # where do we go theta_seps +ve to -ve
             shift_indices = np.argwhere(
                 (np.diff(np.sign(offsets)) != 0)
