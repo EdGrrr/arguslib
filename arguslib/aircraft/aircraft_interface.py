@@ -1,9 +1,13 @@
-from arguslib.misc.geo import ft_to_km
 import numpy as np
+import datetime
+from pathlib import Path
 
-from arguslib.instruments.instruments import PlottableInstrument
 
+from ..misc.geo import ft_to_km
+
+from ..instruments.instruments import PlottableInstrument
 from ..instruments.camera import Camera
+from ..instruments.direct_camera import DirectCamera
 
 from ..instruments import Position
 from .fleet import Fleet
@@ -39,6 +43,69 @@ class AircraftInterface(PlottableInstrument):
         return cls(
             Camera.from_config(campaign, camstr),
         )
+        
+    def load_flight_data(self, date_or_dt: datetime.date | datetime.datetime, adsb_data_dir: str | Path = None):
+        """
+        Loads ADS-B flight data for the specified date from the given directory
+        and assigns ERA5 wind data to the fleet.
+
+        Args:
+            date_or_dt: The date (or datetime object) for which to load data.
+            adsb_data_dir: The directory containing the ADS-B data files
+                             (e.g., YYYYMMDD_ADS-B.nc and YYYYMMDD_ADS-B.txt).
+
+        Raises:
+            TypeError: If date_or_dt is not a datetime.date or datetime.datetime object.
+            FileNotFoundError: If the ADS-B data directory or necessary files are not found.
+        """
+        
+        if adsb_data_dir is None:
+            # load it from config
+            config_paths = [
+                Path("~/.config/arguslib/adsb_path.txt").expanduser(),
+                Path("~/.arguslib/adsb_path.txt").expanduser(),
+                Path("/etc/arguslib/adsb_path.txt"),
+            ]
+            for config_file in config_paths:
+                if not config_file.exists():
+                    continue
+                with open(config_file, "r") as f:
+                    adsb_data_dir = f.read().strip()
+                break
+        
+        if adsb_data_dir is None:
+            raise FileNotFoundError(
+                "ADS-B data directory not found.")
+
+        
+        if isinstance(date_or_dt, datetime.datetime):
+            date_to_load = date_or_dt.date()
+        elif isinstance(date_or_dt, datetime.date):
+            date_to_load = date_or_dt
+        else:
+            raise TypeError("date_or_dt must be a datetime.date or datetime.datetime object.")
+
+        adsb_dir_path = Path(adsb_data_dir)
+        if not adsb_dir_path.is_dir():
+            raise FileNotFoundError(f"ADS-B data directory not found: {adsb_dir_path}")
+
+        adsb_file_basename = date_to_load.strftime("%Y%m%d") + "_ADS-B"
+        # fleet.load_output expects the base path and appends .nc and .txt itself.
+        adsb_file_path_base = adsb_dir_path / adsb_file_basename
+
+        if not (adsb_file_path_base.with_suffix(".nc").exists() and \
+                adsb_file_path_base.with_suffix(".txt").exists()):
+            raise FileNotFoundError(
+                f"Required ADS-B files not found: {adsb_file_path_base.with_suffix('.nc')} "
+                f"or {adsb_file_path_base.with_suffix('.txt')}"
+            )
+
+        print(f"Loading ADS-B data from: {adsb_file_path_base}")
+        self.fleet.load_output(str(adsb_file_path_base))
+
+        print("Attempting to assign ERA5 wind data to fleet...")
+        self.fleet.assign_era5_winds() # This method has its own error handling and print statements
+        print("Flight data loading and ERA5 wind assignment process complete.")
 
     def get_trails(self, time, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
@@ -67,6 +134,18 @@ class AircraftInterface(PlottableInstrument):
         **kwargs,
     ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
+        
+        
+        if not self.fleet.loaded_file:
+            print(f"Warning (AircraftInterface.plot_trails): No ADS-B data seems to have been loaded (fleet.loaded_file is None). "
+                  f"Call 'load_flight_data()' on the AircraftInterface instance. No trails will be plotted for {dt}.")
+            return
+        if not self.fleet.aircraft:
+            # This means loaded_file might be set, but the file contained no aircraft or was empty.
+            print(f"Warning (AircraftInterface.plot_trails): ADS-B data loaded from '{self.fleet.loaded_file}', "
+                  f"but fleet.aircraft is empty. No trails will be plotted for {dt}.")
+            return
+        
         
         if ax is None:
             # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
@@ -123,6 +202,32 @@ class AircraftInterface(PlottableInstrument):
                 markersize=2,
                 **(plot_kwargs | plot_plane_kwargs),
             )
+
+    def to_image_array(self, time=True):
+        """
+        If the underlying camera is a DirectCamera, this method calls its
+        to_image_array() method. This is typically called after self.show()
+        has prepared the image (including any trails).
+        """
+        if isinstance(self.camera, DirectCamera):
+            return self.camera.to_image_array(time=time)
+        else:
+            raise NotImplementedError(
+                "to_image_array is only available when the underlying camera is a DirectCamera."
+            )
+
+    @property
+    def image(self):
+        """
+        If the underlying camera is a DirectCamera, this property accesses its image property.
+        """
+        if isinstance(self.camera, DirectCamera):
+            return self.camera.image
+        else:
+            raise NotImplementedError(
+                "image property is only available when the underlying camera is a DirectCamera."
+            )
+
 
 
 # %%
