@@ -46,7 +46,7 @@ class RadarInterface(PlottableInstrument):
              annotate_beams=True,
              beam_type='start_end',
              ranges_km_for_beams=None,
-             annotate_scan_box=False,
+             annotate_scan_box=True,
              kwargs_scan_box=None,
              show_legend=False,
              **kwargs):
@@ -72,17 +72,26 @@ class RadarInterface(PlottableInstrument):
                  raise ValueError("If 'ax' is provided, it must be a tuple/list of two axes (ax_target, ax_radar).")
             ax_cam, ax_radar_plot = ax
             fig = ax_cam.figure
-            if isinstance(fig, TimestampedFigure): fig.timestamp = current_dt
+            if isinstance(fig, TimestampedFigure):
+                fig.timestamp = current_dt
         else:
-            fig, (ax_cam, ax_radar_plot) = plt.subplots(
-            1,
-            2,
-            figsize=(10, 4.2),
-            dpi=300,
-            width_ratios=[0.8, 1.2],
-            FigureClass=TimestampedFigure,
-            timestamp=current_dt,
-        )
+            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.2), dpi=300)
+            gs = fig.add_gridspec(1, 2, width_ratios=[0.8, 1.2])
+
+            camera_subplot_kwargs = {}
+            # Check if the camera is 'allsky' to set polar projection by default
+            if hasattr(self.camera, 'camera_type') and self.camera.camera_type == 'allsky':
+                camera_subplot_kwargs['projection'] = 'polar'
+            
+            ax_cam = fig.add_subplot(gs[0], **camera_subplot_kwargs)
+            ax_radar_plot = fig.add_subplot(gs[1]) # Radar plot is typically Cartesian
+
+            # Note: Detailed polar axis setup (theta_offset, theta_direction)
+            # will be handled by Camera.show() based on its kwargs (_kwargs_camera),
+            # now that it will correctly configure a provided polar axis.
+
+        # Pass the (potentially polar) ax_cam to the camera's show method.
+        # _kwargs_camera can include theta_behaviour, lr_flip etc.
         ax_cam = self.show_camera(
             current_dt, ax=ax_cam, **_kwargs_camera
         )

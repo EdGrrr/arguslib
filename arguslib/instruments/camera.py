@@ -166,8 +166,24 @@ class Camera(Instrument):
         theta_behaviour = kwargs.pop("theta_behaviour")
 
         if ax is None:
+            # If no axis is provided, make_camera_axes will create one,
+            # potentially polar, and set theta_offset/direction.
             ax = make_camera_axes(self, theta_behaviour=theta_behaviour, dt=dt, **kwargs)
-
+        else:
+            # If an axis is provided, check if it's polar and apply theta settings.
+            if hasattr(ax, "set_theta_zero_location"): # It's a polar axis
+                if theta_behaviour == "pixels":
+                    ax.set_theta_offset(np.deg2rad(self.rotation[-1]))
+                    # Ensure default direction if not specified or handled by lr_flip logic later
+                    if not hasattr(ax, '_theta_direction_set_by_camera_show'): # Avoid double-setting
+                        ax.set_theta_direction(1) # Example default, adjust if needed
+                        ax._theta_direction_set_by_camera_show = True
+                elif theta_behaviour == "bearing":
+                    ax.set_theta_offset(np.pi / 2)
+                    ax.set_theta_direction(-1)
+                elif theta_behaviour == "unflipped_ordinal_aligned":
+                    ax.set_theta_offset(np.pi / 2)
+                    # ax.set_theta_direction(1) # Example default
         is_polar = hasattr(ax, "set_theta_zero_location")
 
         # if polar axes, assume it's a camera axes with
@@ -182,6 +198,9 @@ class Camera(Instrument):
         if is_polar:
             ax.set_rticks([])
 
+        ax.grid(False)
+
+        
         plot_range_rings(self, dt, ax=ax)
 
         try:

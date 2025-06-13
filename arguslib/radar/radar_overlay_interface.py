@@ -177,7 +177,7 @@ class RadarOverlayInterface(PlottableInstrument):
         corner4 = center_end_pos.ead_to_lla(0, orthogonal_direction, cross_scan_dist_km)
         
         position_corners = [corner1, corner2, corner3, corner4, corner1]
-        box_kwargs = {'color': 'yellow', 'linewidth': 1, 'label': f'{range_km:.0f} km Scan Box'}
+        box_kwargs = {'color': 'yellow', 'linewidth': 0.2, 'label': f'{range_km:.0f} km Scan Box'}
         box_kwargs.update(kwargs)
         return self.target_instrument.annotate_positions(position_corners, dt, ax=ax, **box_kwargs)
 
@@ -220,3 +220,24 @@ class RadarOverlayInterface(PlottableInstrument):
         radar_instrument = Radar.from_config(campaign)
         target_instrument = cls._create_plottable_instrument_from_config(campaign, target_instrument_config)
         return cls(radar_instrument, target_instrument)
+
+    def to_image_array(self, time=True):
+        """
+        If the target_instrument supports to_image_array (e.g., is a DirectCamera),
+        this method calls its to_image_array() method.
+        """
+        if hasattr(self.target_instrument, 'to_image_array') and callable(getattr(self.target_instrument, 'to_image_array')):
+            return self.target_instrument.to_image_array(time=time)
+        else:
+            raise NotImplementedError(
+                "to_image_array is only available if the target_instrument supports it (e.g., is a DirectCamera or wraps one)."
+            )
+
+    @property
+    def image(self):
+        if hasattr(self.target_instrument, 'image'):
+            return self.target_instrument.image
+        else:
+            raise NotImplementedError(
+                "image property is only available if the target_instrument supports it (e.g., is a DirectCamera or wraps one)."
+            )

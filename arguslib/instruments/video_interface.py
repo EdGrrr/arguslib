@@ -7,6 +7,7 @@ import numpy as np
 
 from .direct_camera import DirectCamera
 from .instruments import PlottableInstrument, Position
+from ..radar.radar_overlay_interface import RadarOverlayInterface # Allow RadarOverlayInterface
 
 
 class VideoInterface(PlottableInstrument):
@@ -15,26 +16,44 @@ class VideoInterface(PlottableInstrument):
     and provides utilities for writing these frames to a video file.
     """
 
-    def __init__(self, direct_camera: DirectCamera|AircraftInterface):
-        if isinstance(direct_camera, DirectCamera):
-            self.direct_camera = direct_camera
-        elif isinstance(direct_camera, AircraftInterface):
-            if not isinstance(direct_camera.camera, DirectCamera):
+    def __init__(self, instrument: PlottableInstrument):
+        """
+        Args:
+            instrument: A PlottableInstrument that behaves like a DirectCamera.
+                        It must implement show(dt, ax=None, ...), to_image_array(),
+                        and annotate_positions(..., ax=None, ...).
+                        Typically DirectCamera, AircraftInterface (wrapping DirectCamera),
+                        or RadarOverlayInterface (wrapping DirectCamera).
+        """
+        if isinstance(instrument, DirectCamera):
+            self.direct_camera_delegate = instrument
+            attrs_source = instrument
+        elif isinstance(instrument, AircraftInterface):
+            if not (hasattr(instrument, 'to_image_array') and callable(getattr(instrument, 'to_image_array'))):
                 raise TypeError(
                     "If AircraftInterface is passed to VideoInterface, "
-                    "its underlying camera must be a DirectCamera."
+                    "it must support to_image_array (i.e., its underlying camera must be a DirectCamera)."
                 )
-            self.direct_camera = direct_camera
+            self.direct_camera_delegate = instrument
+            attrs_source = instrument.camera # Get attrs from the base camera
+        elif isinstance(instrument, RadarOverlayInterface):
+            if not (hasattr(instrument, 'to_image_array') and callable(getattr(instrument, 'to_image_array'))):
+                raise TypeError(
+                    "If RadarOverlayInterface is passed to VideoInterface, "
+                    "it must support to_image_array (i.e., its target_instrument must be a DirectCamera or wrap one)."
+                )
+            self.direct_camera_delegate = instrument
+            attrs_source = instrument.target_instrument # Get attrs from the base target
         else:
-            raise TypeError(
-                f"VideoInterface requires a DirectCamera instance, got {type(direct_camera)}"
-            )
+            if not (hasattr(instrument, 'show') and callable(getattr(instrument, 'show')) and \
+                    hasattr(instrument, 'to_image_array') and callable(getattr(instrument, 'to_image_array')) and \
+                    hasattr(instrument, 'annotate_positions') and callable(getattr(instrument, 'annotate_positions'))):
+                raise TypeError(
+                    f"Instrument passed to VideoInterface must behave like a DirectCamera. Got {type(instrument)}")
+            self.direct_camera_delegate = instrument
+            attrs_source = instrument
 
-        # Use the underlying camera's attributes for PlottableInstrument.
-        # This ensures consistency if any part of the system relies on self.attrs
-        # (e.g., for campaign/camstr identification from CameraData).
-        camera_attrs = getattr(self.direct_camera, 'attrs', {})
-        super().__init__(**camera_attrs)
+        super().__init__(**getattr(attrs_source, 'attrs', {}))
 
         self.video_writer: Optional[cv2.VideoWriter] = None
         self.output_path: Optional[str] = None
@@ -56,7 +75,7 @@ class VideoInterface(PlottableInstrument):
         if ax is not None:
             raise ValueError("VideoInterface using DirectCamera should not have Matplotlib axes.")
         # This call prepares/updates self.direct_camera.data_loader.image
-        self.direct_camera.show(dt, ax=None, **kwargs)
+        self.direct_camera_delegate.show(dt, ax=None, **kwargs)
         return None
 
     def annotate_positions(self, positions: list[Position], dt: datetime.datetime, ax: Any = None, *args: Any, **kwargs: Any) -> None:
@@ -68,7 +87,7 @@ class VideoInterface(PlottableInstrument):
             # This check is also in DirectCamera, but good practice at interface level.
             raise ValueError("VideoInterface using DirectCamera should not have Matplotlib axes.")
         # DirectCamera.annotate_positions will draw on its internal image and return None.
-        return self.direct_camera.annotate_positions(positions, dt, ax, *args, **kwargs)
+        return self.direct_camera_delegate.annotate_positions(positions, dt, ax, *args, **kwargs)
 
     def start_video_output(self, output_path: str, fps: int, resolution: Tuple[int, int]) -> None:
         """
@@ -109,7 +128,7 @@ class VideoInterface(PlottableInstrument):
         if image_array is None:
             self.show(dt, **(show_kwargs or {}))  # Updates direct_camera's internal image
             # direct_camera.to_image_array returns RGB
-            frame_rgb = self.direct_camera.to_image_array(time=time_overlay)
+            frame_rgb = self.direct_camera_delegate.to_image_array(time=time_overlay)
             frame_bgr = frame_rgb[:, :, ::-1]  # Convert RGB to BGR for OpenCV
         else:
             frame_bgr = image_array  # Assume provided image_array is already BGR
@@ -135,8 +154,8 @@ class VideoInterface(PlottableInstrument):
                        fps: int, show_kwargs: Optional[dict] = None, time_overlay: bool = True) -> None:
         """Generates a complete video file by iterating through time."""
         _show_kwargs = show_kwargs or {}
-        self.show(start_dt, **_show_kwargs) # Prepare first frame to get resolution
-        first_frame_rgb = self.direct_camera.to_image_array(time=time_overlay)
+        self.show(start_dt, **_show_kwargs) # Prepare first frame by calling delegate's show
+        first_frame_rgb = self.direct_camera_delegate.to_image_array(time=time_overlay) # Get image from delegate
         height, width, _ = first_frame_rgb.shape
         self.start_video_output(output_path, fps, (width, height))
 
@@ -147,4 +166,3 @@ class VideoInterface(PlottableInstrument):
             current_dt += step_timedelta
         print(f"\nFinished processing frames for {output_path}")
         self.finish_video_output()
-
