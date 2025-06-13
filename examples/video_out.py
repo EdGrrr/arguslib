@@ -1,52 +1,53 @@
 
 # %%
 
-from arguslib.misc.met import download_era5_winds
-import cv2
-from tqdm import trange
-from arguslib.aircraft import AircraftInterface
-from pathlib import Path
+# # Example usage in a script like video_out.py:
 
 from arguslib.instruments.direct_camera import DirectUndistortedCamera
+from arguslib.aircraft import AircraftInterface
+from arguslib.instruments.video_interface import VideoInterface # Import the new class
 import datetime
-# %%
+from pathlib import Path
+from tqdm import trange # If you still want trange for progress of other things
+
+# ... (setup cam, dt_start, outdir etc. as before) ...
 cam = DirectUndistortedCamera.from_config("COBALT", "3-7")
-cam.show(datetime.datetime(2025,5,11,11,57,57))
-cam.image
-
-
-aci = AircraftInterface(cam)
-# Dates with ERA5 data:
-# dt_start = datetime.datetime(2025,3,8,10)
 dt_start = datetime.datetime(2025,5,11,7,30)
-# dt_start = datetime.datetime(2025,4,1,11,00)
-# dt_start = datetime.datetime(2025,3,29,7,00)
-
-
-
-adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
-outdir = Path(__file__).parent / "output" / "videos"
+outdir = Path(__file__).parent / "output" / "videos_from_interface"
 outdir.mkdir(exist_ok=True, parents=True)
 
-adsb_file = adsb_datadir / (dt_start.strftime("%Y%m%d") + "_ADS-B")
-if aci.fleet.loaded_file != str(adsb_file):
-    aci.fleet.load_output(str(adsb_file))
+# %%
+# --- Using VideoInterface for camera-only video ---
+video_iface = VideoInterface(cam)
+output_video_file = outdir / f"cam_video_{dt_start.isoformat(timespec='minutes')}.mp4"
+
+num_frames = 90
+video_iface.generate_video(
+    output_path=str(output_video_file),
+    start_dt=dt_start,
+    end_dt=dt_start + datetime.timedelta(minutes=num_frames - 1),
+    step_timedelta=datetime.timedelta(minutes=1),
+    fps=4, # From your original example
+    show_kwargs={'brightness_adjust': 1.0}, # Optional: kwargs for DirectCamera.show
+    time_overlay=True # Optional: to add timestamp on frames
+)
 
 # %%
-aci.fleet.assign_era5_winds()
+# --- If you want aircraft trails using AircraftInterface first ---
+aci = AircraftInterface(cam) # cam is a DirectUndistortedCamera
+aci.load_flight_data(dt_start)
+video_iface_with_trails = VideoInterface(aci) # Uses the same 'cam' instance
 
-# %%
-out = cv2.VideoWriter(outdir / f"{dt_start.isoformat(timespec='minutes')}.mp4", cv2.VideoWriter_fourcc(*'avc1'), 4, (3040,3040))
-for i in trange(90):
-    aci.show(dt_start+datetime.timedelta(minutes=i), tlen=15*60)
-    out.write(aci.camera.to_image_array()[:,:,::-1])
-out.release()
+output_video_file_trails = outdir / f"trails_video_{dt_start.isoformat(timespec='minutes')}.mp4"
 
 
-# %%
-aci.show(dt_start)
-aci.camera.image
-
-# %%
-# download_era5_winds(dt_start)
-# %%
+num_frames = 90
+video_iface_with_trails.generate_video(
+    output_path=str(output_video_file_trails),
+    start_dt=dt_start,
+    end_dt=dt_start + datetime.timedelta(minutes=num_frames - 1),
+    step_timedelta=datetime.timedelta(minutes=1),
+    fps=4, # From your original example
+    show_kwargs={'brightness_adjust': 1.0, 'tlen':15*60}, # Optional: kwargs for DirectCamera.show
+    time_overlay=True # Optional: to add timestamp on frames
+)
