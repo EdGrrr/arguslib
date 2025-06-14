@@ -1,6 +1,7 @@
 import datetime
 import numpy as np
 import pyart
+import re
 from pyart.util import datetime_from_radar
 
 from arguslib.instruments.instruments import PlottableInstrument, Position
@@ -54,17 +55,49 @@ class RadarOverlayInterface(PlottableInstrument):
         """
         Shows the target instrument's display. Radar overlays are added via
         separate annotation methods.
+        If this RadarOverlayInterface's show() method is called with
+        kwargs to control beam/box annotations, it will perform them
+        after showing the target instrument.
 
         Args:
             dt: Datetime for the display.
             ax: Matplotlib axes to plot on (if target_instrument uses them).
                 Expected to be None if target_instrument is a DirectCamera.
-            **kwargs: Additional arguments passed to target_instrument.show().
+            **kwargs: Arguments for target_instrument.show() and for controlling
+                      radar annotations (e.g., annotate_beams, beam_type,
+                      kwargs_radar_beams, annotate_scan_box, range_km_scan_box, kwargs_scan_box).
 
         Returns:
             The axes object returned by target_instrument.show() (or None).
         """
-        return self.target_instrument.show(dt, ax=ax, **kwargs)
+        # Pop radar-specific annotation controls from kwargs
+        # These control whether and how annotations are made by *this* show() call.
+        annotate_beams_flag = kwargs.pop('annotate_beams', False)
+        beam_type_for_show = kwargs.pop('beam_type', 'start_end') # Default for direct call
+        ranges_km_for_beams_show = kwargs.pop('ranges_km', None)
+        kwargs_for_beam_annotation_show = kwargs.pop('kwargs_radar_beams', {})
+
+        annotate_scan_box_flag = kwargs.pop('annotate_scan_box', False)
+        # Use a distinct name for scan box range to avoid kwarg collision if 'ranges_km' is for beams
+        range_km_for_box_show = kwargs.pop('range_km_scan_box', 10.0)
+        kwargs_for_box_annotation_show = kwargs.pop('kwargs_scan_box', {})
+
+        # Remaining kwargs are for the target_instrument.show()
+        target_show_kwargs = kwargs
+
+        # 1. Show the target instrument
+        returned_ax = self.target_instrument.show(dt, ax=ax, **target_show_kwargs)
+
+        # 2. Perform radar annotations if requested by flags
+        if annotate_beams_flag:
+            self.annotate_radar_beams(dt, ax=ax, ranges_km=ranges_km_for_beams_show,
+                                      beam_type=beam_type_for_show, **kwargs_for_beam_annotation_show)
+        
+        if annotate_scan_box_flag:
+            self.annotate_scan_box(dt, ax=ax, range_km=range_km_for_box_show,
+                                   **kwargs_for_box_annotation_show)
+
+        return returned_ax
 
     def annotate_positions(self, positions: list[Position], dt: datetime.datetime, ax: any = None, *args: any, **kwargs: any):
         """
@@ -91,7 +124,14 @@ class RadarOverlayInterface(PlottableInstrument):
                        'all_sweeps': Annotate the first ray of each sweep.
             **kwargs: Additional arguments passed to target_instrument.annotate_positions().
         """
-        radar_pyart_obj = self.radar.data_loader.get_pyart_radar(dt)
+        try:
+            radar_pyart_obj = self.radar.data_loader.get_pyart_radar(dt)
+        except FileNotFoundError:
+            print(f"Warning: No radar data file found for {dt}. Skipping radar beam annotations for this frame.")
+            return ax # Return the original axes or None if no axes
+        except Exception as e:
+            print(f"Warning: Error loading radar data for {dt}: {e}. Skipping radar beam annotations for this frame.")
+            return ax
 
         if ranges_km is None:
             if hasattr(radar_pyart_obj, 'range') and 'data' in radar_pyart_obj.range and len(radar_pyart_obj.range['data']) > 0:
@@ -112,10 +152,18 @@ class RadarOverlayInterface(PlottableInstrument):
                  beams_to_annotate.append((radar_pyart_obj.elevation['data'][-1], radar_pyart_obj.azimuth['data'][-1]))
         elif beam_type == 'active':
             if hasattr(radar_pyart_obj, 'time') and 'data' in radar_pyart_obj.time and len(radar_pyart_obj.time['data']) > 0:
-                ray_times_seconds = radar_pyart_obj.time['data']
+                ray_times_seconds_since_reference = radar_pyart_obj.time['data']
+                ref_time = re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", radar_pyart_obj.time['units']).group(0)
+                ref_datetime = datetime.datetime.strptime(ref_time, "%Y-%m-%dT%H:%M:%SZ")
+                
                 scan_start_datetime = datetime_from_radar(radar_pyart_obj)
+                scan_start_seconds_since_reference = (scan_start_datetime - ref_datetime).total_seconds()
+                ray_times_seconds = ray_times_seconds_since_reference - scan_start_seconds_since_reference
+                
+                # dt here is the time for which we want to find the active beam
                 dt_seconds_since_scan_start = (dt - scan_start_datetime).total_seconds()
                 closest_ray_index = np.argmin(np.abs(ray_times_seconds - dt_seconds_since_scan_start))
+
                 if 0 <= closest_ray_index < len(radar_pyart_obj.elevation['data']):
                      beams_to_annotate.append((radar_pyart_obj.elevation['data'][closest_ray_index],
                                                radar_pyart_obj.azimuth['data'][closest_ray_index]))
@@ -146,14 +194,25 @@ class RadarOverlayInterface(PlottableInstrument):
                  beam_kwargs['color'] = default_colors[i % len(default_colors)]
             if 'label' not in beam_kwargs:
                  if beam_type == 'start_end': beam_kwargs['label'] = 'Start Beam' if i == 0 else 'End Beam'
-                 elif beam_type == 'active': beam_kwargs['label'] = 'Active Beam'
+                 elif beam_type == 'active' and 'closest_ray_index' in locals(): # Ensure active beam context
+                     actual_ray_time_sec = ray_times_seconds[closest_ray_index]
+                     actual_beam_datetime = scan_start_datetime + datetime.timedelta(seconds=actual_ray_time_sec)
+                     beam_kwargs['label'] = f'Active Beam ({actual_beam_datetime.strftime("%H:%M:%S.%f")[:-3]})'
                  elif beam_type == 'all_sweeps': beam_kwargs['label'] = f'Sweep {i+1} Start'
             last_ax = self.target_instrument.annotate_positions(centerline_lla_points, dt, ax, **beam_kwargs)
         return last_ax
 
     def annotate_scan_box(self, dt: datetime.datetime, ax: any = None, range_km: float = 10.0, **kwargs):
         """ Annotates a box representing the cross-scan extent. """
-        radar_pyart_obj = self.radar.data_loader.get_pyart_radar(dt)
+        try:
+            radar_pyart_obj = self.radar.data_loader.get_pyart_radar(dt)
+        except FileNotFoundError:
+            print(f"Warning: No radar data file found for {dt}. Skipping scan box annotation for this frame.")
+            return ax # Return the original axes or None if no axes
+        except Exception as e:
+            print(f"Warning: Error loading radar data for {dt}: {e}. Skipping scan box annotation for this frame.")
+            return ax
+
         if not radar_pyart_obj.elevation['data'].size or not radar_pyart_obj.azimuth['data'].size:
             print(f"Warning: No elevation or azimuth data in radar scan for {dt}. Cannot annotate scan box.")
             return ax
