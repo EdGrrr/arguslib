@@ -64,7 +64,7 @@ class DirectCamera(Camera):
                 xy0 = tuple(pl_track[i][0:2].astype(int).tolist())
                 xy1 = tuple(pl_track[i+1][0:2].astype(int).tolist())
                 # print(xy0, xy1)
-                cv2.line(self.data_loader.image, xy0, xy1, color, thickness=linewidth)
+                cv2.line(self.data_loader.image, xy0, xy1, color, thickness=int(linewidth))
         else:
             raise ValueError("Online line plotting for DirectCameras")
         
