@@ -9,6 +9,57 @@ default_calibration_file = (
 )
 
 
+def ead_to_xyz(target_elevation, target_azimuth, target_distance):
+    target_z = target_distance * np.sin(np.deg2rad(target_elevation))
+    target_hor_range = target_distance * np.cos(np.deg2rad(target_elevation))
+    target_x = target_hor_range * np.sin(np.deg2rad(target_azimuth))
+    target_y = target_hor_range * np.cos(np.deg2rad(target_azimuth))
+    return np.array([target_x, target_y, target_z])
+
+
+def xyz_to_ead(target_x, target_y, target_z):
+    target_distance = np.sqrt(target_x**2 + target_y**2 + target_z**2)
+    target_elevation = np.rad2deg(
+        np.arctan2(target_z, np.sqrt(target_x**2 + target_y**2))
+    )
+    target_azimuth = np.rad2deg(np.arctan2(target_x, target_y))
+    return np.array([target_elevation, target_azimuth, target_distance])
+
+
+def rotation_matrix_i_to_g(elevation, azimuth, roll):
+    # Convert angles to radians
+    azimuth = np.deg2rad(azimuth)
+    elevation = np.deg2rad(90 - elevation)
+    roll = np.deg2rad(roll)
+
+    # Azimuth rotation (Rₐ) - global z-axis
+    R_a = np.array(
+        [
+            [np.cos(azimuth), -np.sin(azimuth), 0],
+            [np.sin(azimuth), np.cos(azimuth), 0],
+            [0, 0, 1],
+        ]
+    )
+
+    # Elevation rotation (Rₑ) - global x-axis
+    R_e = np.array(
+        [
+            [1, 0, 0],
+            [0, np.cos(elevation), -np.sin(elevation)],
+            [0, np.sin(elevation), np.cos(elevation)],
+        ]
+    )
+
+    # Roll rotation (Rᵣ) - local z-axis
+    R_r = np.array(
+        [[np.cos(roll), np.sin(roll), 0], [-np.sin(roll), np.cos(roll), 0], [0, 0, 1]]
+    )
+
+    # Combined rotation matrix
+    R = R_a @ R_e @ R_r
+    return R
+
+
 class Position:
     # Position as
     # - lon, lat, alt (assuming Earth is locally flat)
@@ -53,25 +104,10 @@ class Position:
         target_y = distance * np.cos(np.deg2rad(target_bearing))
         return np.array([target_x, target_y, target_z])
 
-    def ead_to_xyz(self, target_elevation, target_azimuth, target_distance):
-        target_z = target_distance * np.sin(np.deg2rad(target_elevation))
-        target_hor_range = target_distance * np.cos(np.deg2rad(target_elevation))
-        target_x = target_hor_range * np.sin(np.deg2rad(target_azimuth))
-        target_y = target_hor_range * np.cos(np.deg2rad(target_azimuth))
-        return np.array([target_x, target_y, target_z])
-
     def ead_to_lla(self, target_elevation, target_azimuth, target_distance):
         return self.xyz_to_lla(
-            *self.ead_to_xyz(target_elevation, target_azimuth, target_distance)
+            *ead_to_xyz(target_elevation, target_azimuth, target_distance)
         )
-
-    def xyz_to_ead(self, target_x, target_y, target_z):
-        target_distance = np.sqrt(target_x**2 + target_y**2 + target_z**2)
-        target_elevation = np.rad2deg(
-            np.arctan2(target_z, np.sqrt(target_x**2 + target_y**2))
-        )
-        target_azimuth = np.rad2deg(np.arctan2(target_x, target_y))
-        return np.array([target_elevation, target_azimuth, target_distance])
 
     def xyz_to_lla(self, target_x, target_y, target_z):
         lon = self.lon + target_x / (111.111 * np.cos(self.lat))
@@ -101,6 +137,8 @@ class Instrument(PlottableInstrument):
     def __init__(self, position: Position, rotation: list, **attrs):
         """Physical instruments with coordinate transforms and affiliated data loaders."""
         self.position = position
+        if isinstance(rotation, int):
+            rotation = [90, 0, rotation]
         self.rotation = rotation
 
         self.data_loader = None
@@ -110,17 +148,30 @@ class Instrument(PlottableInstrument):
     # ead on the other hand is an instrument property, as it depends on the instrument rotation.
 
     def iead_to_gead(self, elevation, azimuth, dist):
-        """Instrument El, az, dist to global values, based on an
-        instrument facing directly up/north.  For the allsky cameras,
-        this is probably more straightforwrd. A little trickier for
-        perspective cameras.
+        # convert to instrument-relative xyz coordinates "view coordinates"
+        ixyz = ead_to_xyz(elevation, azimuth, dist)
 
-        """
-        # FIXME: add a full extrinsic calibration---3d angle.
-        return elevation, azimuth + self.rotation, dist
+        # apply the rotations in this order:
+        R = rotation_matrix_i_to_g(self.rotation[0], self.rotation[1], self.rotation[2])
+
+        # rotate around the z axis (roll)
+        gxyz = R @ ixyz
+
+        # convert to global ead
+        global_elevation, global_azimuth, dist = xyz_to_ead(*gxyz)
+
+        return global_elevation, global_azimuth, dist
 
     def gead_to_iead(self, elevation, azimuth, dist):
-        return elevation, azimuth - self.rotation, dist
+        gxyz = ead_to_xyz(elevation, azimuth, dist)
+        # apply the inverse rotation
+        R = rotation_matrix_i_to_g(self.rotation[0], self.rotation[1], self.rotation[2])
+        inv_R = np.linalg.inv(R)
+        ixyz = inv_R @ gxyz
+        # convert to instrument-relative ead coordinates
+        instrument_elevation, instrument_azimuth, dist = xyz_to_ead(*ixyz)
+
+        return instrument_elevation, instrument_azimuth, dist
 
     def target_iead(self, target_position: Position):
         ead = self.position.target_ead(target_position)
@@ -130,7 +181,7 @@ class Instrument(PlottableInstrument):
         return self.position.ead_to_lla(*self.iead_to_gead(elevation, azimuth, dist))
 
     def iead_to_xyzworld(self, elevation, azimuth, dist):
-        return self.position.ead_to_xyz(*self.iead_to_gead(elevation, azimuth, dist))
+        return ead_to_xyz(*self.iead_to_gead(elevation, azimuth, dist))
 
     def xyzworld_to_iead(self, target_x, target_y, target_z):
         gead = self.position.xyz_to_ead(target_x, target_y, target_z)

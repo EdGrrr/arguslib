@@ -1,8 +1,9 @@
-from arguslib.instruments.calibration import Projection, unit
+from arguslib.instruments.calibration import PerspectiveProjection, Projection, unit
 from arguslib.instruments.instruments import (
     Instrument,
     Position,
     default_calibration_file,
+    ead_to_xyz,
 )
 from arguslib.misc.geo import haversine
 from arguslib.misc.plotting import (
@@ -31,6 +32,11 @@ class Camera(Instrument):
         self.intrinsic = intrinsic_calibration
         self.scale_factor = scale_factor
         self.camera_type = camera_type
+
+        self.image_size_px = (
+            [4608, 2592] if self.camera_type == "perspective" else [3040, 3040]
+        )
+        self.image_size_px = np.array(self.image_size_px) * scale_factor
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -65,18 +71,34 @@ class Camera(Instrument):
             cameras.update(config)
 
         camera_config = cameras[campaign][camstr]
-        if camera_config["calibration_file"] is None:
-            camera_config["calibration_file"] = default_calibration_file
 
-        kwargs = {
-            "filename": Path(camera_config["calibration_file"]).expanduser().absolute(),
-            "position": Position(*camera_config["position"]),
-            "rotation": camera_config["rotation"],
-        } | kwargs
-        # will ignore config if kwargs contains any of the keys in camera_config
+        if "calibration_file" in camera_config:  # Then this is an allsky camera
+            if camera_config["calibration_file"] is None:
+                camera_config["calibration_file"] = default_calibration_file
+            kwargs = {
+                "filename": Path(camera_config["calibration_file"])
+                .expanduser()
+                .absolute(),
+                "position": Position(*camera_config["position"]),
+                "rotation": camera_config["rotation"],
+            } | kwargs  # will ignore config if kwargs contains any of the keys in camera_config
 
-        kwargs |= {"campaign": campaign, "camstr": camstr}
-        return cls.from_filename(**kwargs)
+            kwargs |= {"campaign": campaign, "camstr": camstr}
+            return cls.from_filename(**kwargs)
+
+        else:  # Then this is a perspective camera
+            kwargs |= {"campaign": campaign, "camstr": camstr}
+            return cls(
+                PerspectiveProjection(
+                    camera_config["focal_lengths"],
+                    camera_config["principal_point"],
+                    camera_config.get("distortion_coeffs", None),
+                ),
+                position=Position(*camera_config["position"]),
+                rotation=camera_config["rotation"],
+                camera_type="perspective",
+                **kwargs,
+            )
 
     # view here is in the camera space - we need to get the xyz in camera projection, not the world projection
     def target_pix(self, target_position: Position):
@@ -91,9 +113,7 @@ class Camera(Instrument):
 
     def iead_to_pix(self, elevation, azimuth, dist=10):
         return (
-            self.intrinsic.view_to_image(
-                self.position.ead_to_xyz(elevation, azimuth, dist)
-            )
+            self.intrinsic.view_to_image(ead_to_xyz(elevation, azimuth, dist))
             / self.scale_factor
         )
 
@@ -140,17 +160,18 @@ class Camera(Instrument):
         is_polar = hasattr(ax, "set_theta_zero_location")
 
         # if polar axes, assume it's a camera axes with
-        if is_polar:
-            transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
-        else:
-            transform = ax.transData
+        transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
+        # if is_polar:
+        #     transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
+        # else:
+        #     transform = ax.transData
 
         ax.transData = transform
 
         if is_polar:
             ax.set_rticks([])
 
-        plot_range_rings(self, ax=ax)
+        plot_range_rings(self, dt, ax=ax)
 
         try:
             img = self.get_data_time(dt)
@@ -178,22 +199,34 @@ class Camera(Instrument):
             ]
         )
 
+        behind_camera = np.array([self.target_iead(p)[0] < 0 for p in positions])
+
         if (dists[~np.isnan(dists)] > max_range_km).all():
             return
 
         pl_track = np.array([self.target_pix(p) for p in positions])
+
+        # if nonpolar axes, need to preserve the limits
+        if hasattr(ax, "set_xlim"):
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+
         if plotting_method is None:
             ax.plot(
-                pl_track.T[0][dists < max_range_km],
-                pl_track.T[1][dists < max_range_km],
+                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
+                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
                 *args,
                 **kwargs,
             )
         else:
             getattr(ax, plotting_method)(
-                pl_track.T[0][dists < max_range_km],
-                pl_track.T[1][dists < max_range_km],
+                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
+                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
                 *args,
                 **kwargs,
             )
+
+        if hasattr(ax, "set_xlim"):
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
         return ax
