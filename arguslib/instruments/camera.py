@@ -134,7 +134,18 @@ class Camera(Instrument):
         self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
 
     @override
-    def _show(self, dt, ax=None, fail_if_no_data=True, **kwargs):
+    def _show(
+        self,
+        dt,
+        ax=None,
+        fail_if_no_data=True,
+        imshow_kw={},
+        brightness_adjust=1.0,
+        **kwargs,
+    ):
+        """Show the nearest possible timestamp.
+        
+        Limited by camera time resolution (5s)"""
         defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
         if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
@@ -155,7 +166,7 @@ class Camera(Instrument):
         theta_behaviour = kwargs.pop("theta_behaviour")
 
         if ax is None:
-            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, **kwargs)
+            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, dt=dt, **kwargs)
 
         is_polar = hasattr(ax, "set_theta_zero_location")
 
@@ -174,13 +185,22 @@ class Camera(Instrument):
         plot_range_rings(self, dt, ax=ax)
 
         try:
-            img = self.get_data_time(dt)
+            img, timestamp = self.get_data_time(dt, return_timestamp=True)
+            ax.get_figure().timestamp = timestamp
         except FileNotFoundError as e:
             if fail_if_no_data:
                 raise e
             else:
                 return ax
-        ax.imshow(img[:, :, ::-1], origin="upper")
+
+        # new_vmin = np.round(brightness_adjust * 255)
+        img = np.clip(np.uint16(img) * brightness_adjust, 0, 255).astype(np.uint8)
+        # img[img <= new_vmin] = new_vmin
+        # img = np.round(255 * (img.astype(float) - new_vmin) / (255 - new_vmin)).astype(
+        #     int
+        # )
+
+        ax.imshow(img[:, :, ::-1], origin="upper", **imshow_kw)
 
         return ax
 

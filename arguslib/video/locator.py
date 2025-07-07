@@ -1,10 +1,14 @@
 # %%
 """Finds the closest image to the one required"""
 
+from arguslib.misc.times import convert_to_london_naive
 from csat2.locator import FileLocator
 import os
 
 from .video import Video
+from zoneinfo import ZoneInfo
+
+from pytz import utc
 
 video_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/videos/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}_{hour:0>2}{min:0>2}{second:0>2}_A.mp4"
 
@@ -29,8 +33,11 @@ class CameraData:
 
         self.video = None
         self.current_video_path = None
+        
+        self.image = None
+        self.current_image_time = None
 
-    def get_data_time(self, dt):
+    def get_data_time(self, dt, return_timestamp=False):
         filepath = self.get_video_file(dt)
 
         if filepath is None:
@@ -43,7 +50,7 @@ class CameraData:
             self.current_video_path = filepath
 
         try:
-            return self.video.get_data_time(dt)
+            self.image, self.current_image_time = self.video.get_data_time(dt, return_timestamp=True)
         except ValueError as e:
             # Likely a "not in time bounds" error - happens when we are "between two frames"
             # if we are at the start, return the first frame if its within a minute
@@ -51,17 +58,27 @@ class CameraData:
                 dt < self.video.time_bounds[0]
                 and (self.video.time_bounds[0] - dt).seconds < 60
             ):
-                return self.video.get_data_time(self.video.time_bounds[0])
+                self.image, self.current_image_time = self.video.get_data_time(self.video.time_bounds[0], return_timestamp=True)
             # if we are at the end, return the last frame if its within a minute
             elif (
                 dt > self.video.time_bounds[1]
                 and (dt - self.video.time_bounds[1]).seconds < 60
             ):
-                return self.video.get_data_time(self.video.time_bounds[1])
+                self.image, self.current_image_time = self.video.get_data_time(self.video.time_bounds[1], return_timestamp=return_timestamp)
             else:
                 raise e
+            
+        if return_timestamp:
+            return self.image, self.current_image_time
+        else:
+            return self.image
 
     def get_video_file(self, dt):
+        # dt is in utc.
+        # but (TEST) the files are **named** with local time?
+        # get dt object which is timezone naive but 
+        # dt = dt.replace(hour=dt.hour-1)
+        
         files = self.locator.search(
             "ARGUS",
             "video",

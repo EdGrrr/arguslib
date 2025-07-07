@@ -17,6 +17,7 @@ class Video:
         self.time_bounds = self.get_timestamps([0, self.n_frames - 1])
 
     def get_data_time(self, dt, return_timestamp=False):
+        """Gets image data at the nearest possible timestamp. Images have 5 second time resolution."""
         n = self.estimate_frame_number(dt)
         n = np.round(n).astype(int)
         frame = self.get_frame(n)
@@ -86,6 +87,9 @@ def extract_timestamp(image, ts_factor=ts_factor):
     """Return a datetime object with the image timestamp to the nearest second."""
     image_ts_array = (image[0, 0 : (31 * ts_factor) : ts_factor, 0] > 128).astype("int")
     int_timestamp = int("".join(str(a) for a in image_ts_array), 2)
+    # return datetime.datetime.fromtimestamp(
+    #     int_timestamp
+    # )
     local_time = datetime.datetime.fromtimestamp(
         int_timestamp, tz=ZoneInfo("Europe/London")
     )

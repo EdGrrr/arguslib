@@ -110,6 +110,7 @@ class Position:
         )
 
     def xyz_to_lla(self, target_x, target_y, target_z):
+        # Assume Earth is locally flat, but also spherical
         lon = self.lon + target_x / (111.111 * np.cos(self.lat))
         lat = self.lat + target_y / (111.111)
         return Position(lon, lat, target_z + self.alt)
@@ -192,10 +193,10 @@ class Instrument(PlottableInstrument):
             "Data loader initialisation not implemented for this instrument"
         )
 
-    def get_data_time(self, dt):
+    def get_data_time(self, dt, **kwargs):
         if self.data_loader is None:
             self.initialise_data_loader()
-        return self.data_loader.get_data_time(dt)
+        return self.data_loader.get_data_time(dt, **kwargs)
 
     def show(self, dt, ax=None, **kwargs):
         if self.data_loader is None:
