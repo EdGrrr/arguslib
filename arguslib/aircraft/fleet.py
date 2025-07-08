@@ -495,7 +495,7 @@ class Fleet:
             metadata[ac] = self.aircraft[ac].get_data(dtime, vname, tlen)
         return metadata
     
-    def assign_era5_winds(self):
+    def assign_era5_winds(self, _download_attempted_this_call=False):
         """
         Pre-calculates and assigns ERA5 wind data (uwind, vwind) to all aircraft positions,
         using 4D interpolation for time, pressure level, latitude, and longitude.
@@ -510,6 +510,7 @@ class Fleet:
         Raises:
             RuntimeError: If ERA5_DATA_HANDLER is not available or if data
                         has not been loaded via load_output.
+                        Or if a download was attempted but files are still missing.
             ValueError: If the date cannot be parsed from the loaded filename.
         """
         if ERA5_DATA_HANDLER is None:
@@ -548,13 +549,45 @@ class Fleet:
             raise ValueError(f"Could not parse date from filename: {self.loaded_file}. Expected format is 'YYYYMMDD_...'.")
 
         # check if the era5 data is there
+        needs_download=False
         for level, handler in ERA5_DATA_HANDLER.items():
-            try: handler.get_data_time(base_date)
-            except:
+            try:
+                handler.get_data_time(base_date)
+            except IndexError:
+                print(f"ERA5 data for {level} on {base_date.date()} appears to be missing (locator.search failed).")
+                needs_download = True
+                break # Found one missing file, no need to check others before attempting download.
+            except Exception as e:
+                # Catch other potential errors during data loading (e.g., corrupted file, other csat2 issues)
+                print(f"Warning: Error checking/loading ERA5 data for {level} on {base_date.date()}: {e}. "
+                      "Wind data for this level might be incomplete or unavailable. Download will not be attempted for this type of error.")
+                # We don't set needs_download = True here, as re-downloading might not fix non-IndexError issues.
+                # The process will continue, and if data is truly unusable, interpolation later might use NaNs or fail.
+
+        if needs_download:
+            if _download_attempted_this_call:
+                # If a download was already attempted in this recursive chain and files are still missing.
+                msg = (f"ERA5 download was already attempted for {base_date.date()} but files are still "
+                       f"not found by locator.search. Aborting wind assignment to prevent infinite loop. "
+                       f"Please check download paths and csat2 configuration.")
+                print(msg)
+                raise RuntimeError(msg)
+
+            print(f"Attempting to download ERA5 wind data for {base_date.date()}...")
+            try:
                 download_era5_winds(base_date)
                 return self.assign_era5_winds()
-            
-                
+
+                print("Download attempt finished. Re-attempting wind assignment.")
+                # After download, recursively call assign_era5_winds again to process the potentially new data.
+                # Pass a flag to indicate a download has been made in this call chain.
+                return self.assign_era5_winds(_download_attempted_this_call=True)
+            except PermissionError as e:
+                print(f"ERA5 download failed due to PermissionError: {e}. ERA5 winds will be unavailable for {base_date.date()}.")
+                return # Stop processing for winds, allow main program to continue if possible.
+            except Exception as e: # Other errors during download
+                print(f"An unexpected error occurred during ERA5 download for {base_date.date()}: {e}. ERA5 winds will be unavailable.")
+                return # Stop processing for winds.
 
         # --- 3. Get variable indices ---
         lon_idx = self.variables.index("lon")

@@ -1,19 +1,23 @@
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
+import numpy as np
 
 from arguslib.instruments.instruments import PlottableInstrument
 
 from ..instruments.radar import Radar
-
 from ..instruments.camera import Camera
-from ..misc.plotting import TimestampedFigure, plot_beam
+from ..misc.plotting import TimestampedFigure
+
+from .radar_overlay_interface import RadarOverlayInterface
 
 
 class RadarInterface(PlottableInstrument):
     def __init__(self, radar: Radar, camera: PlottableInstrument):
         self.radar = radar
         self.camera = camera
+        
+        self._overlay_interface = RadarOverlayInterface(radar, self.camera)
 
         if self.radar.data_loader is None:
             radar.initialise_data_loader()
@@ -32,96 +36,121 @@ class RadarInterface(PlottableInstrument):
         )
 
     def show_camera(self, dt, show_legend=False, ax=None, kwargs_beam={}, **kwargs):
+        # Uses the overlay interface to show the target, which then delegates
+        return self._overlay_interface.show(dt, ax=ax, **kwargs)
+
+    def show(self, dt, ax=None, var="DBZ",
+             kwargs_camera=None,
+             kwargs_radar_scan=None,
+             kwargs_radar_beams=None,
+             annotate_beams=True,
+             beam_type='start_end',
+             ranges_km_for_beams=None,
+             annotate_scan_box=True,
+             kwargs_scan_box=None,
+             show_legend=False,
+             **kwargs):
+
         radar = self.radar.data_loader.get_pyart_radar(dt)
         dt_radar = datetime.datetime.fromisoformat(
             datetime_from_radar(radar).isoformat()
         )
         if dt_radar.replace(microsecond=0) != dt.replace(microsecond=0):
             raise ValueError(
-                f"dt ({dt}) does not match any radar data. (Try {dt_radar.replace(microsecond=0)})"
-            )
-
-        ax = self.camera.show(dt_radar, replace_ax=ax, **kwargs)
-
-        elev_azi_start = radar.elevation["data"][0], radar.azimuth["data"][0]
-        elev_azi_end = radar.elevation["data"][-1], radar.azimuth["data"][-1]
-
-        kwargs_beam = {"lw": 0.7} | kwargs_beam
-        plot_beam(
-            self.camera,
-            self.radar,
-            elev_azi_start,
-            dt=dt,
-            ax=ax,
-            color="darkgreen",
-            **kwargs_beam,
-        )
-        plot_beam(
-            self.camera,
-            self.radar,
-            elev_azi_end,
-            dt=dt,
-            ax=ax,
-            color="limegreen",
-            **kwargs_beam,
-        )
-
-        # get the cross-scan bounding box at 10km.
-        pos_start_10km = self.radar.position.ead_to_lla(*elev_azi_start, 10)
-        # displace by pm5km
-        orthogonal_direction = (elev_azi_start[1] + 90) % 360
-        position_corners = [
-            pos_start_10km.ead_to_lla(0, orthogonal_direction, 2.5),
-            pos_start_10km.ead_to_lla(0, orthogonal_direction, -2.5),
-        ]
-
-        pos_end_10km = self.radar.position.ead_to_lla(*elev_azi_end, 10)
-        position_corners += [
-            pos_end_10km.ead_to_lla(0, orthogonal_direction, -2.5),
-            pos_end_10km.ead_to_lla(0, orthogonal_direction, 2.5),
-        ]
-        position_corners += [position_corners[0]]
-        self.camera.annotate_positions(
-            position_corners, dt, ax=ax, color="yellow", linewidth=1
-        )
-
-        if show_legend:
-            try:
-                ax.legend()
-            except AttributeError:
-                # probably a multicam, so just place the legend on the top left of the figure
-                # but only include the first two items in the legend
-                fig = plt.gcf()
-                handles = fig.axes[0].get_legend_handles_labels()[0]
-                labels = fig.axes[0].get_legend_handles_labels()[1]
-                handles = handles[:2]
-                labels = labels[:2]
-                fig.legend(handles=handles, labels=labels, loc="upper left", fontsize=8)
-
-        return ax
-
-    def show(self, dt, ax=None, var="DBZ", kwargs_camera={}, kwargs_beam={}, **kwargs):
+        f"Requested dt ({dt}) does not match radar scan time ({dt_radar.replace(microsecond=0)}).\nEnsure dt corresponds to an actual radar scan time.")
+        # Use dt_radar for all plotting operations to ensure consistency
+        current_dt = dt_radar
+        
+        _kwargs_camera = kwargs_camera or {}
+        _kwargs_radar_scan = kwargs_radar_scan or {}
+        _kwargs_radar_beams = kwargs_radar_beams or {}
+        _kwargs_scan_box = kwargs_scan_box or {}
+        
+        
         if ax is not None:
-            raise ValueError("We need to start with a clean figure")
-        fig, (ax_cam, ax_radar) = plt.subplots(
-            1,
-            2,
-            figsize=(10, 4.2),
-            dpi=300,
-            width_ratios=[0.8, 1.2],
-            FigureClass=TimestampedFigure,
-            timestamp=dt,
-            # constrained_layout=True,
-        )
+            if not isinstance(ax, (tuple, list)) or len(ax) < 2:
+                 raise ValueError("If 'ax' is provided, it must be a tuple/list of two axes (ax_target, ax_radar).")
+            ax_cam, ax_radar_plot = ax
+            fig = ax_cam.figure
+            if isinstance(fig, TimestampedFigure):
+                fig.timestamp = current_dt
+        else:
+            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.2), dpi=300)
+            gs = fig.add_gridspec(1, 2, width_ratios=[0.8, 1.2])
+
+            camera_subplot_kwargs = {}
+            # Check if the camera is 'allsky' to set polar projection by default
+            if hasattr(self.camera, 'camera_type') and self.camera.camera_type == 'allsky':
+                camera_subplot_kwargs['projection'] = 'polar'
+            
+            ax_cam = fig.add_subplot(gs[0], **camera_subplot_kwargs)
+            ax_radar_plot = fig.add_subplot(gs[1]) # Radar plot is typically Cartesian
+
+            # Note: Detailed polar axis setup (theta_offset, theta_direction)
+            # will be handled by Camera.show() based on its kwargs (_kwargs_camera),
+            # now that it will correctly configure a provided polar axis.
+
+        # Pass the (potentially polar) ax_cam to the camera's show method.
+        # _kwargs_camera can include theta_behaviour, lr_flip etc.
         ax_cam = self.show_camera(
-            dt, ax=ax_cam, kwargs_beam=kwargs_beam, **kwargs_camera
+            current_dt, ax=ax_cam, **_kwargs_camera
         )
 
         ax_radar = self.radar.show(
-            dt, ax=ax_radar, var=var, kwargs_beam=kwargs_beam, **kwargs
+            current_dt, ax=ax_radar_plot, var=var, **(_kwargs_radar_scan | kwargs)
         )
 
+        
+        if annotate_beams:
+            self._overlay_interface.annotate_radar_beams(
+                current_dt, ax=ax_cam,
+                ranges_km=ranges_km_for_beams,
+                beam_type=beam_type,
+                **_kwargs_radar_beams
+            )
+
+        if annotate_scan_box:
+            self._overlay_interface.annotate_scan_box(
+                current_dt, ax=ax_cam,
+                **(_kwargs_scan_box) # Pass specific scan box kwargs
+            )
+
+        if show_legend and hasattr(ax_cam, 'legend'):
+            # Attempt to add a legend to the target instrument's plot
+            # This might need adjustment if the target is a CameraArray (multiple axes)
+            # or DirectCamera (no axes).
+            try:
+                handles, labels = [], []
+                # Consolidate legend items from target instrument if possible
+                if hasattr(ax_cam, 'get_legend_handles_labels'):
+                    h, l = ax_cam.get_legend_handles_labels()
+                    handles.extend(h)
+                    labels.extend(l)
+                
+                # If it's a CameraArray, it returns a list of axes.
+                # We might want to create a figure-level legend.
+                if isinstance(self.camera, PlottableInstrument) and \
+                   hasattr(self.camera, 'cameras') and \
+                   isinstance(ax_cam, np.ndarray): # Heuristic for CameraArray
+                    # For CameraArray, collect unique legend items from all subplots
+                    all_handles, all_labels = [], []
+                    for sub_ax in ax_cam.ravel():
+                        if hasattr(sub_ax, 'get_legend_handles_labels'):
+                            h, l = sub_ax.get_legend_handles_labels()
+                            for handle, label in zip(h,l):
+                                if label not in all_labels: # Add unique items
+                                    all_labels.append(label)
+                                    all_handles.append(handle)
+                    if all_handles:
+                        fig.legend(all_handles, all_labels, loc="upper left", fontsize=8)
+                elif handles: # For single axis target
+                    ax_cam.legend(handles, labels)
+
+            except Exception as e:
+                print(f"Could not generate legend for target instrument: {e}")
+
         return ax_cam, ax_radar
+
 
     def annotate_positions(
         self, positions, dt, ax, cam_kwargs={}, radar_kwargs={}, **kwargs
