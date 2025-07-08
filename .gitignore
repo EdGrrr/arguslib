@@ -2,3 +2,5 @@
 arguslib.egg-info
 build
 output
+scratch
+.vscode/settings.json
