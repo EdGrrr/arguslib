@@ -1,14 +1,14 @@
 # %%
 import cv2
 import matplotlib.pyplot as plt
-from arguslib.video import extract_timestamp, extract_exposure
+from arguslib.video import Video, extract_timestamp, extract_exposure
 
 
-vidcap = cv2.VideoCapture(
+vid = Video(
     "/disk1/Data/ARGUS/COBALT/3-8/videos/2025-03-09/argus-3-8_20250309_090030_A.mp4"
 )
 
-success, image = vidcap.read()
+success, image = vid.get_frame(5)
 
 timestamp = extract_timestamp(image)
 exposure = extract_exposure(image)

@@ -1,16 +1,11 @@
 
 # %%
-
-# # Example usage in a script like video_out.py:
-
 from arguslib.instruments.direct_camera import DirectUndistortedCamera
 from arguslib.aircraft import AircraftInterface
 from arguslib.instruments.video_interface import VideoInterface # Import the new class
 import datetime
 from pathlib import Path
-from tqdm import trange # If you still want trange for progress of other things
 
-# ... (setup cam, dt_start, outdir etc. as before) ...
 cam = DirectUndistortedCamera.from_config("COBALT", "3-7")
 dt_start = datetime.datetime(2025,5,11,7,30)
 outdir = Path(__file__).parent / "output" / "videos_from_interface"
@@ -33,7 +28,7 @@ video_iface.generate_video(
 )
 
 # %%
-# --- If you want aircraft trails using AircraftInterface first ---
+# --- A video with annotated trails ---
 aci = AircraftInterface(cam) # cam is a DirectUndistortedCamera
 aci.load_flight_data(dt_start)
 video_iface_with_trails = VideoInterface(aci) # Uses the same 'cam' instance
