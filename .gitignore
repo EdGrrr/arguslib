@@ -1,6 +1,30 @@
+# Sphinx documentation build output
+docs/_build/
+
+# Python bytecode and cache
+__pycache__/
 *.pyc
-arguslib.egg-info
-build
+
+# Python virtual environment
+venv/
+.venv/
+env/
+.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# OS-specific
+.DS_Store
+
+# Notebook checkpoints
+.ipynb_checkpoints
+
 output
 scratch
-.vscode/settings.json

@@ -64,6 +64,15 @@ def undistort_custom_fisheye(
     return undistorted
 
 class UndistortedCamera(Camera):
+    """A specialized Camera that applies a fisheye undistortion to images.
+
+    This class inherits from `Camera` and overrides the `get_data_time` method.
+    When data is fetched, it applies a custom polynomial undistortion model
+    to rectify the fisheye image into a perspective-like view before it is
+    returned or displayed. All other `Camera` functionality, such as geolocation
+    and annotation, remains the same.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.poly_thetar = self.intrinsic.poly_thetar

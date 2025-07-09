@@ -1,3 +1,7 @@
+"""
+Provides an interface for visualizing radar data alongside a plottable instrument like a camera.
+"""
+
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import datetime
@@ -13,6 +17,20 @@ from .radar_overlay_interface import RadarOverlayInterface
 
 
 class RadarInterface(PlottableInstrument):
+    """Combines a radar and a plottable instrument (e.g., Camera) for synchronized visualization.
+
+    This class facilitates the creation of plots that show a camera's view
+    (or another instrument's view) side-by-side with a corresponding radar scan.
+    It also handles overlaying radar-derived information, such as the scan
+    volume or individual beams, onto the camera's display.
+
+    The core functionality is provided by the `show` method, which generates
+    the combined plot.
+
+    Attributes:
+        radar (Radar): The radar instrument instance.
+        camera (PlottableInstrument): The camera or other instrument to plot alongside the radar.
+    """
     def __init__(self, radar: Radar, camera: PlottableInstrument):
         self.radar = radar
         self.camera = camera
@@ -51,6 +69,42 @@ class RadarInterface(PlottableInstrument):
              show_legend=False,
              **kwargs):
 
+        """Displays the camera view and radar scan side-by-side for a specific time.
+
+        This is the primary method for this class. It creates a figure with two
+        subplots: one for the camera/target instrument's view and one for the
+        radar scan (e.g., an RHI or PPI plot). It can also orchestrate the
+        annotation of radar beams and scan boundaries on the camera view.
+
+        Args:
+            dt (datetime.datetime): The datetime for the visualization. This time
+                must correspond to an available radar scan.
+            ax (tuple[Axes, Axes], optional): A tuple of two Matplotlib axes
+                `(ax_camera, ax_radar)` to plot on. If None, new axes are created.
+                Defaults to None.
+            var (str, optional): The radar variable to plot (e.g., 'DBZ').
+                Defaults to "DBZ".
+            kwargs_camera (dict, optional): Keyword arguments passed to the
+                `camera.show()` method. Defaults to None.
+            kwargs_radar_scan (dict, optional): Keyword arguments passed to the
+                `radar.show()` method. Defaults to None.
+            kwargs_radar_beams (dict, optional): Keyword arguments for plotting
+                radar beams on the camera, passed to `annotate_radar_beams`.
+                Defaults to None.
+            annotate_beams (bool, optional): If True, overlays radar beams on the
+                camera view. Defaults to True.
+            beam_type (str, optional): Type of beams to show ('start_end', 'active').
+                Defaults to 'start_end'.
+            ranges_km_for_beams (list, optional): Distances along the beam to plot.
+                Defaults to None.
+            annotate_scan_box (bool, optional): If True, overlays the scan extent
+                on the camera view. Defaults to True.
+            kwargs_scan_box (dict, optional): Keyword arguments for plotting the
+                scan box. Defaults to None.
+            show_legend (bool, optional): If True, attempts to display a legend
+                on the camera plot. Defaults to False.
+            **kwargs: Additional keyword arguments passed to `radar.show()`.
+        """
         radar = self.radar.data_loader.get_pyart_radar(dt)
         dt_radar = datetime.datetime.fromisoformat(
             datetime_from_radar(radar).isoformat()
@@ -155,6 +209,22 @@ class RadarInterface(PlottableInstrument):
     def annotate_positions(
         self, positions, dt, ax, cam_kwargs={}, radar_kwargs={}, **kwargs
     ):
+        """Annotates geographical positions on both the camera and radar plots.
+
+        Args:
+            positions (list[Position]): A list of `Position` objects to annotate.
+            dt (datetime.datetime): The datetime for the annotation.
+            ax (tuple[Axes, Axes]): A tuple of the two axes `(ax_camera, ax_radar)`
+                to plot on.
+            cam_kwargs (dict, optional): Keyword arguments passed specifically to
+                `camera.annotate_positions`. Defaults to {}.
+            radar_kwargs (dict, optional): Keyword arguments passed specifically to
+                `radar.annotate_positions`. Defaults to {}.
+            **kwargs: Keyword arguments passed to both annotation methods.
+
+        Returns:
+            tuple[Axes, Axes]: The updated camera and radar axes.
+        """
         ax_cam, ax_radar = ax
 
         ax_cam = self.camera.annotate_positions(

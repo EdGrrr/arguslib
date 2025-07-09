@@ -14,6 +14,24 @@ from .fleet import Fleet
 
 
 class AircraftInterface(PlottableInstrument):
+    """An interface for visualizing aircraft flight tracks on a plottable instrument.
+
+    This class acts as a wrapper around another `PlottableInstrument` (like a
+    `Camera` or `CameraArray`) and a `Fleet` object containing flight data.
+    Its primary role is to orchestrate the plotting of the underlying
+    instrument's view and then overlaying the aircraft trails and positions
+    on top of it.
+
+    Because it inherits from `PlottableInstrument`, it can be used interchangeably
+    wherever a plottable object is expected, allowing for powerful composition
+    (e.g., wrapping an `AircraftInterface` inside a `RadarInterface`).
+
+    Attributes:
+        camera (PlottableInstrument): The underlying instrument to draw on.
+            Despite the name, this can be any `PlottableInstrument`.
+        fleet (Fleet): The object managing the aircraft data.
+    """
+
     def __init__(self, camera: PlottableInstrument, fleet: Fleet = None):
         self.camera = camera
         self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.

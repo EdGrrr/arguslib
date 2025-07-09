@@ -61,6 +61,20 @@ def rotation_matrix_i_to_g(elevation, azimuth, roll):
 
 
 class Position:
+    """Represents a geographical point in longitude, latitude, and altitude.
+
+    This class provides the core functionality for geolocation within ``arguslib``.
+    It assumes a locally flat Earth for calculations, which is suitable for the
+    typical ranges of ground-based instruments.
+
+    All distance and altitude units are in kilometers.
+
+    Attributes:
+        lon (float): Longitude in degrees.
+        lat (float): Latitude in degrees.
+        alt (float): Altitude in kilometers.
+    """
+
     # Position as
     # - lon, lat, alt (assuming Earth is locally flat)
     def __init__(self, lon, lat, alt):
@@ -74,6 +88,15 @@ class Position:
     #  - Distance in km
 
     def target_ead(self, target_position):
+        """Calculates the elevation, azimuth, and distance to a target position.
+
+        Args:
+            target_position (Position): The target position.
+
+        Returns:
+            np.ndarray: An array containing [elevation, azimuth, distance].
+                        Elevation and azimuth are in degrees, distance is in km.
+        """
         # Approximate - can use pyproj for exact (or with large distances)
         distance = haversine(
             self.lon, self.lat, target_position.lon, target_position.lat
@@ -92,6 +115,15 @@ class Position:
     #  - Z altitude in km
 
     def target_xyz(self, target_position):
+        """Calculates the relative X, Y, Z coordinates to a target position.
+
+        Args:
+            target_position (Position): The target position.
+
+        Returns:
+            np.ndarray: An array containing [X, Y, Z] distances in km, where
+                        X is East-West, Y is North-South, and Z is vertical.
+        """
         # Assume Earth is locally flat, but also spherical
         distance = haversine(
             self.lon, self.lat, target_position.lon, target_position.lat
@@ -105,6 +137,16 @@ class Position:
         return np.array([target_x, target_y, target_z])
 
     def ead_to_lla(self, target_elevation, target_azimuth, target_distance):
+        """Converts elevation, azimuth, and distance to a new Position.
+
+        Args:
+            target_elevation (float): Elevation from the horizontal in degrees.
+            target_azimuth (float): Azimuth from North in degrees.
+            target_distance (float): Distance in km.
+
+        Returns:
+            Position: The new geographical position.
+        """
         return self.xyz_to_lla(
             *ead_to_xyz(target_elevation, target_azimuth, target_distance)
         )
@@ -120,21 +162,77 @@ class Position:
 
 
 class PlottableInstrument:
+    """An abstract base class for any object that can be visualized.
+
+    This class defines the core API for visualization within ``arguslib``. Any
+    instrument or interface that can be displayed on a Matplotlib plot or
+    rendered into an image should implement these methods.
+
+    Attributes:
+        attrs (dict): A dictionary of attributes describing the instrument.
+    """
+
     def __init__(self, **attrs):
         self.attrs = attrs
 
     def show(self, dt, ax=None, **kwargs) -> Axes:  # or consistently a 2D list of axes
+        """Renders the instrument's primary visualization for a given time.
+
+        Args:
+            dt (datetime.datetime): The timestamp for the visualization.
+            ax (matplotlib.axes.Axes, optional): The axis to plot on. If None,
+                a new figure and axis are typically created. For some instruments
+                that render directly to images (like `DirectCamera`), this may
+                be ignored or required to be None.
+            **kwargs: Additional keyword arguments specific to the instrument's
+                plotting implementation.
+
+        Returns:
+            matplotlib.axes.Axes: The axis (or array of axes) on which the
+            visualization was drawn. May be None for non-Matplotlib backends.
+        """
         raise NotImplementedError("Visualisation not implemented for this instrument")
 
     def annotate_positions(
         self, positions: list[Position], dt, ax, **kwargs
     ) -> Axes:  # or consistently a 2D list of axes
+        """Annotates one or more geographical positions on the instrument's plot.
+
+        Args:
+            positions (list[Position]): A list of `Position` objects to annotate.
+            dt (datetime.datetime): The datetime for which the view is valid.
+            ax (matplotlib.axes.Axes): The axis (or axes) to plot on.
+            **kwargs: Keyword arguments passed to the underlying plotting function
+                (e.g., `ax.plot` or `ax.scatter`).
+
+        Returns:
+            matplotlib.axes.Axes: The updated axis (or axes).
+        """
         raise NotImplementedError(
             "Annotating positions not implemented for this instrument"
         )
 
 
 class Instrument(PlottableInstrument):
+    """Represents a physical instrument with a specific location and orientation.
+
+    This class extends `PlottableInstrument` by adding coordinate transformation
+    capabilities. It holds a `Position` and a `rotation` vector, allowing it
+    to convert between its own local coordinate system (instrument-relative
+    elevation/azimuth) and the global coordinate system (world-relative
+    elevation/azimuth).
+
+    It also introduces the concept of a `data_loader`, which is responsible
+    for fetching the instrument's data (e.g., images, scans) for a given time.
+
+    Attributes:
+        position (Position): The geographical location of the instrument.
+        rotation (list): A list of three angles [elevation, azimuth, roll]
+            defining the instrument's orientation.
+        data_loader: An object responsible for loading data for this instrument.
+            It is typically initialized on the first call to `get_data_time` or `show`.
+    """
+
     def __init__(self, position: Position, rotation: list, **attrs):
         """Physical instruments with coordinate transforms and affiliated data loaders."""
         self.position = position

@@ -7,6 +7,18 @@ from ..misc.geo import haversine
 from ..misc.plotting import plot_range_rings
 
 class DirectCamera(Camera):
+    """A Camera subclass that renders annotations directly onto the image array.
+
+    This class is optimized for performance, especially for creating videos.
+    Instead of using Matplotlib for plotting, it overrides the `show` and
+    `annotate_positions` methods to use OpenCV functions (`cv2.line`, `cv2.putText`)
+    to draw directly on the image data.
+
+    As a result, its `show` and `annotate_positions` methods do not accept or
+    return Matplotlib `Axes` objects. The final image can be accessed via the
+    `.image` property or `.to_image_array()` method.
+    """
+
     def get_data_time(self, *args, **kwargs):
         ret_val = super().get_data_time(*args, **kwargs)
         self.data_loader.image = self.data_loader.image[:, :, ::-1]

@@ -1,3 +1,7 @@
+"""
+Defines the Camera instrument, providing methods for geolocation and visualization of all-sky or perspective camera imagery.
+"""
+
 from arguslib.instruments.calibration import PerspectiveProjection, Projection, unit
 from arguslib.instruments.instruments import (
     Instrument,
@@ -21,6 +25,20 @@ from typing import override
 
 
 class Camera(Instrument):
+    """Represents a camera instrument, handling intrinsic and extrinsic calibration.
+
+    This class provides the core functionality for a single camera, including
+    loading configuration, converting between world coordinates and pixel
+    coordinates, and rendering the camera's view on a plot. It supports both
+    'allsky' fisheye cameras and standard 'perspective' cameras.
+
+    Attributes:
+        intrinsic (Projection): The intrinsic calibration model.
+        scale_factor (float): A scaling factor applied to image dimensions.
+        camera_type (str): The type of camera, e.g., 'allsky' or 'perspective'.
+        image_size_px (np.ndarray): The dimensions of the camera image in pixels.
+    """
+
     def __init__(
         self,
         intrinsic_calibration: Projection,
@@ -143,9 +161,33 @@ class Camera(Instrument):
         brightness_adjust=1.0,
         **kwargs,
     ):
-        """Show the nearest possible timestamp.
-        
-        Limited by camera time resolution (5s)"""
+        """Renders the camera image for a given datetime on a Matplotlib axis.
+
+        This method fetches the camera frame closest to the specified datetime,
+        applies transformations for correct orientation and projection, and
+        displays it. It can create a new plot or draw on an existing one.
+        For all-sky cameras, this typically produces a polar plot.
+
+        Args:
+            dt (datetime.datetime): The timestamp for which to show the image.
+            ax (matplotlib.axes.Axes, optional): The axis to plot on. If None,
+                a new figure and axis are created. Defaults to None.
+            fail_if_no_data (bool, optional): If True, raises a FileNotFoundError
+                if no image data is available. If False, returns the axis without
+                plotting an image. Defaults to True.
+            imshow_kw (dict, optional): Keyword arguments passed to `ax.imshow`.
+                Defaults to {}.
+            brightness_adjust (float, optional): A factor to adjust image brightness.
+                Values > 1 increase brightness. Defaults to 1.0.
+            **kwargs:
+                theta_behaviour (str): Controls the polar axis orientation.
+                    Can be 'bearing' (North at top), 'pixels' (image y-axis up),
+                    or 'unflipped_ordinal_aligned'.
+                lr_flip (bool): Whether to flip the image left-to-right.
+
+        Returns:
+            matplotlib.axes.Axes: The axis on which the image was plotted.
+        """
         defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
         if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
@@ -227,6 +269,25 @@ class Camera(Instrument):
     def annotate_positions(
         self, positions, dt, ax, *args, plotting_method=None, max_range_km=90, **kwargs
     ):
+        """Annotates one or more geographical positions on the camera image.
+
+        Converts a list of `Position` objects (lat, lon, alt) into pixel
+        coordinates for the given camera view and plots them on the specified
+        axis.
+
+        Args:
+            positions (list[Position]): A list of `Position` objects to annotate.
+            dt (datetime.datetime): The datetime for which the camera view is valid.
+                This can affect calibration.
+            ax (matplotlib.axes.Axes): The axis to plot the annotations on.
+            *args: Positional arguments passed to the plotting function (e.g., `ax.plot`).
+            plotting_method (str, optional): The name of the Matplotlib plotting
+                method to use (e.g., 'scatter', 'plot'). If None, `ax.plot` is used.
+                Defaults to None.
+            max_range_km (float, optional): The maximum horizontal distance (in km)
+                from the camera at which to plot positions. Defaults to 90.
+            **kwargs: Keyword arguments passed to the plotting function.
+        """
         # TODO: this should take dt into account, mostly because the calibration may change for the same camera at different times...
         lats = [p.lat for p in positions]
         lons = [p.lon for p in positions]
