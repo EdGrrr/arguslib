@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 from .camera import Camera
-from .instruments import PlottableInstrument, Position
+from ..instruments.instruments import PlottableInstrument, Position
 
 
 class CameraArray(PlottableInstrument):

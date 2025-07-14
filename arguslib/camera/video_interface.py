@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 from .direct_camera import DirectCamera
-from .instruments import PlottableInstrument, Position
+from ..instruments.instruments import PlottableInstrument, Position
 from ..radar.radar_overlay_interface import RadarOverlayInterface # Allow RadarOverlayInterface
 
 

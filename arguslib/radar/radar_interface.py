@@ -9,8 +9,8 @@ import numpy as np
 
 from arguslib.instruments.instruments import PlottableInstrument
 
-from ..instruments.radar import Radar
-from ..instruments.camera import Camera
+from .radar import Radar
+from ..camera.camera import Camera
 from ..misc.plotting import TimestampedFigure
 
 from .radar_overlay_interface import RadarOverlayInterface

@@ -1,4 +1,3 @@
-from re import L
 from arguslib.instruments.instruments import Position
 import numpy as np
 import matplotlib.pyplot as plt

@@ -6,8 +6,8 @@ from pathlib import Path
 from ..misc.geo import ft_to_km
 
 from ..instruments.instruments import PlottableInstrument
-from ..instruments.camera import Camera
-from ..instruments.direct_camera import DirectCamera
+from ..camera.camera import Camera
+from ..camera.direct_camera import DirectCamera
 
 from ..instruments import Position
 from .fleet import Fleet

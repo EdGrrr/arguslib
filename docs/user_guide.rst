@@ -23,7 +23,7 @@ The `PlottableInstrument`: A Universal Drawing API
 
 Once you have a location, you need something to visualize it on. The ``PlottableInstrument`` is an abstract class that defines a standard interface for any object that can be visualized. It guarantees that any `PlottableInstrument` will have `show()` and `annotate_positions()` methods.
 
-This is a powerful concept because it applies not only to physical devices, but also to higher-level "interfaces" that combine other plottable objects.
+This is a powerful concept because it applies not only to physical devices, but also to higher-level "interfaces" that combine plottables and other data sources.
 
 .. autoclass:: arguslib.instruments.instruments.PlottableInstrument
    :members: show, annotate_positions
@@ -48,7 +48,7 @@ Concrete Instruments: The Camera
 
 The ``Camera`` class is a concrete implementation of an ``Instrument``. It represents a single camera, handles its specific calibration, and knows how to load and display image frames.
 
-.. autoclass:: arguslib.instruments.camera.Camera
+.. autoclass:: arguslib.camera.camera.Camera
    :members: from_config, show, annotate_positions
    :show-inheritance:
 
@@ -60,18 +60,18 @@ The power of this structure is that it's easy to extend. For example, ``arguslib
 *   **UndistortedCamera**: Inherits from ``Camera`` but overrides the data loading method to apply a fisheye undistortion to the image before displaying it.
 *   **DirectCamera**: A more advanced subclass that bypasses Matplotlib entirely, drawing annotations directly onto the image array using OpenCV. This is ideal for generating videos efficiently.
 
-.. autoclass:: arguslib.instruments.undistorted_camera.UndistortedCamera
+.. autoclass:: arguslib.camera.undistorted_camera.UndistortedCamera
    :members:
    :show-inheritance:
 
-.. autoclass:: arguslib.instruments.direct_camera.DirectCamera
+.. autoclass:: arguslib.camera.direct_camera.DirectCamera
    :members: show, annotate_positions, image
    :show-inheritance:
 
 Combining Instruments and Data: Interfaces
 ------------------------------------------
 
-Interfaces are also `PlottableInstrument`s, but they are not physical devices. Instead, they **compose** one or more other plottable instruments to create more complex, synchronized visualizations. This is a key design pattern in ``arguslib``.
+Interfaces are also `PlottableInstrument` objects, but they are not physical devices. Instead, they **compose** one or more other plottable instruments to create more complex, synchronized visualizations. This is a key design pattern in ``arguslib``.
 
 The `RadarInterface`
 ~~~~~~~~~~~~~~~~~~~~

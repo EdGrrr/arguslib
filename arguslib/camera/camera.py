@@ -2,15 +2,15 @@
 Defines the Camera instrument, providing methods for geolocation and visualization of all-sky or perspective camera imagery.
 """
 
-from arguslib.instruments.calibration import PerspectiveProjection, Projection, unit
-from arguslib.instruments.instruments import (
+from .calibration import PerspectiveProjection, Projection, unit
+from ..instruments.instruments import (
     Instrument,
     Position,
     default_calibration_file,
     ead_to_xyz,
 )
-from arguslib.misc.geo import haversine
-from arguslib.misc.plotting import (
+from ..misc.geo import haversine
+from ..misc.plotting import (
     get_pixel_transform,
     make_camera_axes,
     plot_range_rings,
@@ -147,7 +147,7 @@ class Camera(Instrument):
 
     @override
     def initialise_data_loader(self):
-        from ..video import CameraData
+        from ..camera import CameraData
 
         self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
 

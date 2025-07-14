@@ -11,6 +11,7 @@ Welcome to arguslib's documentation!
    :caption: Contents:
 
    user_guide
+   api/modules
 
 
 Indices and tables
