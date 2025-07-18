@@ -84,6 +84,7 @@ class Projection:
 
     def image_to_view(self, p_image, norm: bool = False):
         """Convert an image pixel location to a 3D location"""
+        p_image = np.array(p_image)
         return image_to_view(self.poly_rz, self.principal_point, p_image, norm)
 
     def view_to_image(self, v_view, normed: bool = False):
