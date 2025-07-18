@@ -77,6 +77,7 @@ class UndistortedCamera(Camera):
         super().__init__(*args, **kwargs)
         self.poly_thetar = self.intrinsic.poly_thetar
         self.intrinsic = UndistortedProjection.from_projection_intrinsics(self.intrinsic)
+        self.reverse_y=False
     
     def get_data_time(self, *args, **kwargs):
         output = super().get_data_time(*args, **kwargs)
@@ -85,6 +86,13 @@ class UndistortedCamera(Camera):
             return undistort_custom_fisheye(img, self.poly_thetar, self.intrinsic.principal_point), timestamp
         else:
             return undistort_custom_fisheye(output, self.poly_thetar, self.intrinsic.principal_point)
+    
+    def target_pix(self, target_position):
+        test = super().target_pix(target_position)
+        if self.reverse_y:
+            return np.array([test[0], -1* test[1]])
+        else:
+            return test
         
 
 class UndistortedProjection:
@@ -100,6 +108,7 @@ class UndistortedProjection:
         return np.stack([u, v], axis=-1)
 
     def image_to_view(self, p_image, norm: bool = False):
+        p_image = np.array(p_image)
         x = (p_image[..., 0] - self.principal_point[0]) / self.focal_length
         y = (p_image[..., 1] - self.principal_point[1]) / self.focal_length
         z = np.ones_like(x)

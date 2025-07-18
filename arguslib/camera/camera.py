@@ -1,13 +1,16 @@
 """
 Defines the Camera instrument, providing methods for geolocation and visualization of all-sky or perspective camera imagery.
 """
-
+# %%
+import datetime
 from .calibration import PerspectiveProjection, Projection, unit
 from ..instruments.instruments import (
     Instrument,
     Position,
     default_calibration_file,
     ead_to_xyz,
+    xyz_to_ead,
+    rotation_matrix_i_to_g
 )
 from ..misc.geo import haversine
 from ..misc.plotting import (
@@ -18,7 +21,7 @@ from ..misc.plotting import (
 
 
 import numpy as np
-
+from tqdm import trange
 
 from pathlib import Path
 from typing import override
@@ -122,12 +125,34 @@ class Camera(Instrument):
     def target_pix(self, target_position: Position):
         return self.iead_to_pix(*self.target_iead(target_position))
 
-    def pix_to_iead(self, pix_x, pix_y, distance):
+    def pix_to_iead(self, pix_x, pix_y, distance=None, altitude=None):
         xyz = self.intrinsic.image_to_view(
             [pix_x * self.scale_factor, pix_y * self.scale_factor]
         )
+        
         # xyz for projection, convert to ead for projection
-        return self.position.xyz_to_ead(distance * unit(xyz))
+        uv = unit(xyz)
+        if distance is None and altitude is None:
+            raise Exception("Must specify either distance or altitude") #I'd done something here but I think it was daft
+        elif distance is not None and altitude is None:
+            return xyz_to_ead(*(uv * distance))
+        elif distance is None and altitude is not None:
+            R_i_to_g = rotation_matrix_i_to_g(*self.rotation)
+
+            # Rotate the unit view vector into the global frame.
+            uv_global = R_i_to_g @ uv
+
+            # The z-component of the global vector is used to find the distance.
+            # If uv_global[2] is zero or negative, the ray is horizontal or points down,
+            # and will not intersect a higher altitude plane in the forward direction.
+            if uv_global[2] <= 1e-6:  # Avoid division by zero/small numbers
+                return np.array([np.nan, np.nan, np.nan])
+
+            distance = (altitude - self.position.alt) / uv_global[2]
+            return xyz_to_ead(*(uv * distance))
+        else:
+            raise ValueError("Cannot specify both distance and altitude.")
+
 
     def iead_to_pix(self, elevation, azimuth, dist=10):
         return (
@@ -330,3 +355,15 @@ class Camera(Instrument):
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
         return ax
+    
+    def distance_calibration_img(self, height_km=10):
+        X, Y = np.meshgrid(np.arange(self.image_size_px[0]), np.arange(self.image_size_px[1]))
+        grid = np.full_like(X, np.nan)
+        
+        for xx in trange(self.image_size_px[0]):
+            for yy in range(self.image_size_px[1]):
+                elev, _, dist = self.pix_to_iead(X[xx, yy].item(), Y[xx, yy].item(), altitude=height_km)
+                dist_in_plane = dist * np.tan(np.deg2rad(elev))
+                grid[xx, yy] = dist_in_plane
+        return grid
+# %%
