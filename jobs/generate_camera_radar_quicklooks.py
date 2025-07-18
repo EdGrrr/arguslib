@@ -7,8 +7,8 @@ import tqdm
 
 from arguslib.aircraft import AircraftInterface
 from arguslib.radar import RadarInterface
-from arguslib.instruments.radar import Radar
-from arguslib.instruments.camera_array import CameraArray
+from arguslib.radar.radar import Radar
+from arguslib.camera.camera_array import CameraArray
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
 outdir = Path(__file__).parent / "output" / "camera_radar_quicklooks"

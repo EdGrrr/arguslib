@@ -5,8 +5,8 @@ interface classes to plot radar and aircraft data."""
 import datetime
 from pathlib import Path
 from arguslib.aircraft import AircraftInterface
-from arguslib.instruments.radar import Radar
-from arguslib.instruments.camera_array import CameraArray
+from arguslib.radar.radar import Radar
+from arguslib.camera.camera_array import CameraArray
 from arguslib.radar.radar_interface import RadarInterface
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")

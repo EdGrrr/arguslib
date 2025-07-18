@@ -1,10 +1,10 @@
 # %%
 from matplotlib import pyplot as plt
-from arguslib.instruments.camera import Camera
+from arguslib.camera.camera import Camera
 import datetime
 
 from arguslib.instruments.instruments import Position
-from arguslib.instruments.radar import Radar
+from arguslib.radar.radar import Radar
 
 dt = datetime.datetime(2025, 3, 25, 9)
 

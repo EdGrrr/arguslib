@@ -95,7 +95,7 @@ class Radar(Instrument):
 
     @override
     def initialise_data_loader(self):
-        from ..radar import RadarData
+        from . import RadarData
 
         self.data_loader = RadarData(self.attrs["campaign"], "rhi")
 

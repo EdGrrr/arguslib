@@ -3,10 +3,10 @@
 from datetime import datetime
 from argusflightserver.fleet import Aircraft
 from arguslib.aircraft.aircraft_interface import AircraftInterface
-from arguslib.instruments.calibration import PerspectiveProjection, focal_length_px
+from arguslib.camera.calibration import PerspectiveProjection, focal_length_px
 from arguslib.instruments.instruments import Position
-from arguslib.instruments.camera import Camera
-from arguslib.video.locator import CameraData
+from arguslib.camera.camera import Camera
+from arguslib.camera.locator import CameraData
 import matplotlib.pyplot as plt
 from pathlib import Path
 

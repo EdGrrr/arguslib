@@ -5,10 +5,10 @@ import re
 from pyart.util import datetime_from_radar
 
 from arguslib.instruments.instruments import PlottableInstrument, Position
-# We will duck-type the radar, but it's typically arguslib.instruments.radar.Radar
-from arguslib.instruments.camera import Camera # Needed for from_campaign helper
-from arguslib.instruments.camera_array import CameraArray # Needed for from_campaign helper
-from arguslib.instruments.direct_camera import DirectUndistortedCamera # Needed for from_campaign helper
+# We will duck-type the radar, but it's typically arguslib.radar.radar.Radar
+from ..camera.camera import Camera # Needed for from_campaign helper
+from ..camera.camera_array import CameraArray # Needed for from_campaign helper
+from ..camera.direct_camera import DirectUndistortedCamera # Needed for from_campaign helper
 from arguslib.aircraft.aircraft_interface import AircraftInterface # Needed for from_campaign helper
 
 class RadarOverlayInterface(PlottableInstrument):
@@ -275,7 +275,7 @@ class RadarOverlayInterface(PlottableInstrument):
         The radar is always the default radar for the campaign.
         The target_instrument is created based on target_instrument_config.
         """
-        from arguslib.instruments.radar import Radar # Import here to avoid circular dependency at module level
+        from arguslib.radar.radar import Radar # Import here to avoid circular dependency at module level
         radar_instrument = Radar.from_config(campaign)
         target_instrument = cls._create_plottable_instrument_from_config(campaign, target_instrument_config)
         return cls(radar_instrument, target_instrument)

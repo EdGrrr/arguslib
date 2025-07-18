@@ -1,7 +1,7 @@
 # %%
 import cv2
 import matplotlib.pyplot as plt
-from arguslib.video import Video, extract_timestamp, extract_exposure
+from arguslib.camera import Video, extract_timestamp, extract_exposure
 
 
 vid = Video(
