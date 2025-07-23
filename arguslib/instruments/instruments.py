@@ -26,37 +26,70 @@ def xyz_to_ead(target_x, target_y, target_z):
     return np.array([target_elevation, target_azimuth, target_distance])
 
 
+
 def rotation_matrix_i_to_g(elevation, azimuth, roll):
-    # Convert angles to radians
-    azimuth = np.deg2rad(azimuth)
-    elevation = np.deg2rad(90 - elevation)
-    roll = np.deg2rad(roll)
+    """
+    Creates a rotation matrix to transform coordinates from the instrument's
+    local frame (i) to the global frame (g).
 
-    # Azimuth rotation (Rₐ) - global z-axis
-    R_a = np.array(
-        [
-            [np.cos(azimuth), -np.sin(azimuth), 0],
-            [np.sin(azimuth), np.cos(azimuth), 0],
-            [0, 0, 1],
-        ]
-    )
+    The instrument frame is defined as:
+    - Z-axis: Along the optical axis (pointing direction).
+    - Y-axis: "Up" direction of the image sensor.
+    - X-axis: "Right" direction of the image sensor.
 
-    # Elevation rotation (Rₑ) - global x-axis
-    R_e = np.array(
-        [
-            [1, 0, 0],
-            [0, np.cos(elevation), -np.sin(elevation)],
-            [0, np.sin(elevation), np.cos(elevation)],
-        ]
-    )
+    The global frame is an East-North-Up (ENU) system.
 
-    # Roll rotation (Rᵣ) - local z-axis
-    R_r = np.array(
-        [[np.cos(roll), np.sin(roll), 0], [-np.sin(roll), np.cos(roll), 0], [0, 0, 1]]
-    )
+    Args:
+        elevation (float): The instrument's pointing elevation in degrees from the horizon.
+        azimuth (float): The instrument's pointing azimuth in degrees from North.
+        roll (float): The instrument's roll in degrees around its optical axis.
 
-    # Combined rotation matrix
-    R = R_a @ R_e @ R_r
+    Returns:
+        np.ndarray: The 3x3 rotation matrix R_i_to_g.
+    """
+    el_rad = np.deg2rad(elevation)
+    az_rad = np.deg2rad(azimuth)
+    roll_rad = np.deg2rad(roll)
+
+    # General case for non-vertical cameras
+    if np.abs(el_rad - np.pi / 2) > 1e-6:
+        # Define the instrument's optical axis (the local z-axis)
+        i_z = np.array([
+            np.cos(el_rad) * np.sin(az_rad),
+            np.cos(el_rad) * np.cos(az_rad),
+            np.sin(el_rad)
+        ])
+        
+        # Define the instrument's "right" vector (local x-axis) before roll
+        g_up = np.array([0, 0, 1])
+        i_x_preroll = np.cross(i_z, g_up)
+        # Handle nadir-pointing case
+        if np.linalg.norm(i_x_preroll) < 1e-6:
+            i_x_preroll = np.array([1, 0, 0])
+        i_x_preroll /= np.linalg.norm(i_x_preroll)
+
+        # Define the instrument's "up" vector (local y-axis) before roll
+        i_y_preroll = np.cross(i_z, i_x_preroll)
+    
+    # Special case for a vertically-pointing (zenith) camera
+    else:
+        # The optical axis is straight up.
+        i_z = np.array([0, 0, 1])
+        
+        # The pre-roll orientation is fixed to North-up, East-right, IGNORING azimuth.
+        i_x_preroll = np.array([1, 0, 0])  # East
+        i_y_preroll = np.array([0, 1, 0])  # North
+    
+    # Apply roll to the pre-roll basis vectors to get the final orientation
+    cos_r = np.cos(roll_rad)
+    sin_r = np.sin(roll_rad)
+
+    # **CORRECTED SIGNS:** This implements a clockwise rotation to match the original system
+    i_x_final = i_x_preroll * cos_r - i_y_preroll * sin_r
+    i_y_final = i_x_preroll * sin_r + i_y_preroll * cos_r
+
+    # Construct the rotation matrix from the final basis vectors
+    R = np.column_stack([i_x_final, i_y_final, i_z])
     return R
 
 
@@ -247,8 +280,10 @@ class Instrument(PlottableInstrument):
     # ead on the other hand is an instrument property, as it depends on the instrument rotation.
 
     def iead_to_gead(self, elevation, azimuth, dist):
+        elevation_from_image = 90.0 - elevation
+
         # convert to instrument-relative xyz coordinates "view coordinates"
-        ixyz = ead_to_xyz(elevation, azimuth, dist)
+        ixyz = ead_to_xyz(elevation_from_image, azimuth, dist)
 
         # apply the rotations in this order:
         R = rotation_matrix_i_to_g(self.rotation[0], self.rotation[1], self.rotation[2])
@@ -269,6 +304,10 @@ class Instrument(PlottableInstrument):
         ixyz = inv_R @ gxyz
         # convert to instrument-relative ead coordinates
         instrument_elevation, instrument_azimuth, dist = xyz_to_ead(*ixyz)
+        
+        # Convert elevation from 'angle from instrument horizon' 
+        # to 'angle from optical axis' (90 - elev)
+        instrument_elevation = 90 - instrument_elevation
 
         return instrument_elevation, instrument_azimuth, dist
 

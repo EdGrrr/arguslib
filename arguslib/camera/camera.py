@@ -125,40 +125,46 @@ class Camera(Instrument):
     def target_pix(self, target_position: Position):
         return self.iead_to_pix(*self.target_iead(target_position))
 
+
     def pix_to_iead(self, pix_x, pix_y, distance=None, altitude=None):
         xyz = self.intrinsic.image_to_view(
             [pix_x * self.scale_factor, pix_y * self.scale_factor]
         )
         
-        # xyz for projection, convert to ead for projection
         uv = unit(xyz)
         if distance is None and altitude is None:
-            raise Exception("Must specify either distance or altitude") #I'd done something here but I think it was daft
-        elif distance is not None and altitude is None:
-            return xyz_to_ead(*(uv * distance))
+            raise Exception("Must specify either distance or altitude")
+        
+        # This inner function calculates the EAD and performs the critical elevation conversion
+        def calculate_and_convert_ead(dist):
+            final_xyz = uv * dist
+            # xyz_to_ead returns [elevation_from_plane, azimuth, distance]
+            ead = xyz_to_ead(*final_xyz)
+            # Convert elevation: 90 degrees - angle_from_xy_plane = angle_from_z_axis
+            ead[0] = 90.0 - ead[0]
+            return ead
+
+        if distance is not None and altitude is None:
+            return calculate_and_convert_ead(distance)
         elif distance is None and altitude is not None:
             R_i_to_g = rotation_matrix_i_to_g(*self.rotation)
-
-            # Rotate the unit view vector into the global frame.
             uv_global = R_i_to_g @ uv
 
-            # The z-component of the global vector is used to find the distance.
-            # If uv_global[2] is zero or negative, the ray is horizontal or points down,
-            # and will not intersect a higher altitude plane in the forward direction.
-            if uv_global[2] <= 1e-6:  # Avoid division by zero/small numbers
+            if uv_global[2] <= 1e-6:
                 return np.array([np.nan, np.nan, np.nan])
 
             distance = (altitude - self.position.alt) / uv_global[2]
-            return xyz_to_ead(*(uv * distance))
+            return calculate_and_convert_ead(distance)
         else:
             raise ValueError("Cannot specify both distance and altitude.")
 
-
     def iead_to_pix(self, elevation, azimuth, dist=10):
-        return (
-            self.intrinsic.view_to_image(ead_to_xyz(elevation, azimuth, dist))
-            / self.scale_factor
-        )
+        # Convert elevation: angle_from_xy_plane = 90 degrees - angle_from_z_axis
+        elevation_for_xyz = 90.0 - elevation
+        
+        view_vector = ead_to_xyz(elevation_for_xyz, azimuth, dist)
+        
+        return self.intrinsic.view_to_image(view_vector) / self.scale_factor
 
     def radar_beam(self, target_elevation, target_azimuth, radar):
         # TODO: this should maybe belong somewhere else. is it still used?
@@ -241,6 +247,8 @@ class Camera(Instrument):
             if hasattr(ax, "set_theta_zero_location"): # It's a polar axis
                 if theta_behaviour == "pixels":
                     ax.set_theta_offset(np.deg2rad(self.rotation[-1]))
+                    # total_rotation_deg = self.rotation[1] + self.rotation[2]
+                    # ax.set_theta_offset(np.deg2rad(total_rotation_deg))
                     # Ensure default direction if not specified or handled by lr_flip logic later
                     if not hasattr(ax, '_theta_direction_set_by_camera_show'): # Avoid double-setting
                         ax.set_theta_direction(1) # Example default, adjust if needed
@@ -324,7 +332,7 @@ class Camera(Instrument):
             ]
         )
 
-        behind_camera = np.array([self.target_iead(p)[0] < 0 for p in positions])
+        behind_camera = np.array([self.target_iead(p)[0] > 90 for p in positions])
 
         if (dists[~np.isnan(dists)] > max_range_km).all():
             return
@@ -354,6 +362,7 @@ class Camera(Instrument):
         if hasattr(ax, "set_xlim"):
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
+            
         return ax
     
     def distance_calibration_img(self, height_km=10):

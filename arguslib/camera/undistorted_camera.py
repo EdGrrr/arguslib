@@ -78,6 +78,7 @@ class UndistortedCamera(Camera):
         self.poly_thetar = self.intrinsic.poly_thetar
         self.intrinsic = UndistortedProjection.from_projection_intrinsics(self.intrinsic)
         self.reverse_y=False
+        self.reverse_x=False
     
     def get_data_time(self, *args, **kwargs):
         output = super().get_data_time(*args, **kwargs)
@@ -90,9 +91,10 @@ class UndistortedCamera(Camera):
     def target_pix(self, target_position):
         test = super().target_pix(target_position)
         if self.reverse_y:
-            return np.array([test[0], -1* test[1]])
-        else:
-            return test
+            test = np.array([test[0], -1* test[1]])
+        if self.reverse_x:
+            test = np.array([-1* test[0], test[1]])
+        return test
         
 
 class UndistortedProjection:
