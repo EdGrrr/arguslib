@@ -13,32 +13,78 @@ class TimestampedFigure(Figure):
         
 
 
+# def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
+#     # if ax is None:
+#     #     ax = plt.gca()
+
+#     range_out = {}
+#     kwargs = {"c": "orange", "lw": 0.7} | kwargs
+#     for rd in ranges:
+#         # get the positions at the same altitude, but at distance rd
+#         global_elevs = np.zeros(37)
+#         global_azis = np.arange(0, 361, 10)
+#         global_dists = np.ones(37) * rd
+
+#         # convert to lat lon positions
+#         positions = [
+#             camera.position.ead_to_lla(global_elev, global_azi, global_dist)
+#             for global_elev, global_azi, global_dist in zip(
+#                 global_elevs, global_azis, global_dists
+#             )
+#         ]
+
+#         # then move them to the correct altitude
+#         positions = [Position(pos.lon, pos.lat, alt) for pos in positions]
+
+#         camera.annotate_positions(
+#             positions,
+#             None,
+#             ax=ax,
+#             **kwargs,
+#         )
+#     return range_out
+
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
-    # if ax is None:
-    #     ax = plt.gca()
+    # This helper function calculates a destination lat/lon using spherical geometry
+    def calculate_destination_point(start_lon, start_lat, bearing_deg, distance_km):
+        """
+        Calculates a destination point given a starting point, bearing,
+        and distance along a great-circle path.
+        """
+        R = 6371.0  # Average Earth radius in km
+        
+        lat1_rad = np.deg2rad(start_lat)
+        lon1_rad = np.deg2rad(start_lon)
+        bearing_rad = np.deg2rad(bearing_deg)
+        
+        d_div_R = distance_km / R
+        
+        lat2_rad = np.arcsin(np.sin(lat1_rad) * np.cos(d_div_R) +
+                         np.cos(lat1_rad) * np.sin(d_div_R) * np.cos(bearing_rad))
+        
+        lon2_rad = lon1_rad + np.arctan2(np.sin(bearing_rad) * np.sin(d_div_R) * np.cos(lat1_rad),
+                                     np.cos(d_div_R) - np.sin(lat1_rad) * np.sin(lat2_rad))
+                                     
+        return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
 
     range_out = {}
     kwargs = {"c": "orange", "lw": 0.7} | kwargs
     for rd in ranges:
-        # get the positions at the same altitude, but at distance rd
-        global_elevs = np.zeros(37)
-        global_azis = np.arange(0, 361, 10)
-        global_dists = np.ones(37) * rd
-
-        # convert to lat lon positions
-        positions = [
-            camera.position.ead_to_lla(global_elev, global_azi, global_dist)
-            for global_elev, global_azi, global_dist in zip(
-                global_elevs, global_azis, global_dists
+        # Generate points for a ring at a specific ground distance 'rd'
+        azimuths_deg = np.arange(0, 361, 10)
+        positions = []
+        for azi in azimuths_deg:
+            # Calculate the destination lat/lon using the correct spherical math
+            target_lon, target_lat = calculate_destination_point(
+                camera.position.lon, camera.position.lat, azi, rd
             )
-        ]
+            # Create a Position object at the desired altitude
+            positions.append(Position(target_lon, target_lat, alt))
 
-        # then move them to the correct altitude
-        positions = [Position(pos.lon, pos.lat, alt) for pos in positions]
-
+        # Annotate the generated positions on the camera image
         camera.annotate_positions(
             positions,
-            None,
+            dt,
             ax=ax,
             **kwargs,
         )
