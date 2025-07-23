@@ -129,8 +129,8 @@ class RadarInterface(PlottableInstrument):
             if isinstance(fig, TimestampedFigure):
                 fig.timestamp = current_dt
         else:
-            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.2), dpi=300)
-            gs = fig.add_gridspec(1, 2, width_ratios=[0.8, 1.2])
+            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.9), dpi=300, constrained_layout=True)
+            gs = fig.add_gridspec(1, 2)
 
             camera_subplot_kwargs = {}
             # Check if the camera is 'allsky' to set polar projection by default
