@@ -183,7 +183,7 @@ def save_case(save_path, selected_dt, camera_name):
 DEFAULT_YEAR = 2025
 DEFAULT_MONTH = 5
 DEFAULT_DAY = 31
-DEFAULT_SCAN_TIME_STR = "14:53:37" # H:M:S format
+DEFAULT_SCAN_TIME_STR = "15:26:07" # H:M:S format
 
 st.set_page_config(layout="wide")
 st.title("🛰️ Argus Radar & Camera Interface Explorer")
@@ -286,29 +286,35 @@ with st.sidebar:
     if 'selected_scan_dt' not in st.session_state or st.session_state.selected_scan_dt not in scan_times:
         st.session_state.selected_scan_dt = scan_times[0]
 
+    # --- Button Callbacks ---
+    def set_random_scan():
+        """Callback to set a new random scan, date, month, and year."""
+        random_year = random.choice(list(active_year_months.keys()))
+        random_month = random.choice(active_year_months[random_year])
+        random_available_dates = find_available_dates_in_month(campaign, random_year, random_month)
+        if random_available_dates:
+            random_date = random.choice(random_available_dates)
+            random_scan_times = get_available_scans_for_day(campaign, "rhi", random_date, start_time, end_time)
+            if random_scan_times:
+                # This now works because it runs before the widgets are drawn
+                st.session_state.selected_year = random_year
+                st.session_state.selected_month = random_month
+                st.session_state.selected_date = random_date
+                st.session_state.selected_scan_dt = random.choice(random_scan_times)
+
+    def set_next_scan():
+        """Callback to advance to the next scan in the list."""
+        current_index = scan_times.index(st.session_state.selected_scan_dt)
+        next_index = (current_index + 1) % len(scan_times)
+        st.session_state.selected_scan_dt = scan_times[next_index]
+
     # Buttons to navigate scans
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Next Scan", use_container_width=True):
-            current_index = scan_times.index(st.session_state.selected_scan_dt)
-            next_index = (current_index + 1) % len(scan_times)
-            st.session_state.selected_scan_dt = scan_times[next_index]
-            st.rerun()
+        st.button("Next Scan", on_click=set_next_scan, use_container_width=True)
 
     with col2:
-        if st.button("Random Scan", use_container_width=True):
-            random_year = random.choice(list(active_year_months.keys()))
-            random_month = random.choice(active_year_months[random_year])
-            random_available_dates = find_available_dates_in_month(campaign, random_year, random_month)
-            if random_available_dates:
-                random_date = random.choice(random_available_dates)
-                random_scan_times = get_available_scans_for_day(campaign, "rhi", random_date, start_time, end_time)
-                if random_scan_times:
-                    st.session_state.selected_year = random_year
-                    st.session_state.selected_month = random_month
-                    st.session_state.selected_date = random_date
-                    st.session_state.selected_scan_dt = random.choice(random_scan_times)
-                    st.rerun()
+        st.button("Random Scan", on_click=set_random_scan, use_container_width=True)
 
     st.selectbox(
         "Select Scan Time (UTC)",
