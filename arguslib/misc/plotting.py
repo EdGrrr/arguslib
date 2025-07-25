@@ -188,13 +188,15 @@ def make_camera_axes(
 
     if replace_ax is not None:
         fig = replace_ax.figure
-        pos = replace_ax.get_position()
+    
+        # 1. Get the subplot's grid specification (its "slot" in the layout)
+        spec = replace_ax.get_subplotspec()
+        
+        # 2. Remove the old axes from the figure
         replace_ax.remove()
-
-        ax = fig.add_axes(
-            pos,
-            projection=projection,
-        )
+        
+        # 3. Add a new subplot in the SAME grid slot
+        ax = fig.add_subplot(spec, projection=projection)
     else:
         ax = fig.add_subplot(pos, projection=projection)
 

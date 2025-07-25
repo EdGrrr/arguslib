@@ -1,4 +1,6 @@
 import datetime
+from inspect import signature
+from cycler import V
 import numpy as np
 import pyart
 import re
@@ -22,19 +24,17 @@ class RadarOverlayInterface(PlottableInstrument):
         Args:
             radar: The radar instrument providing beam/scan information.
                    Must have 'beam', 'data_loader', 'position', 
-                   'iead_to_lla', 'beamwidth' attributes/methods.
+                   'beamwidth' attributes/methods.
             target_instrument: The instrument onto which the radar information will be overlaid.
                                This instrument must implement show() and annotate_positions().
         """
         # Duck-typing check for radar capabilities
-        required_attrs = ['beam', 'data_loader', 'position', 'iead_to_lla', 'beamwidth', 'attrs']
+        required_attrs = ['beam', 'data_loader', 'position', 'beamwidth', 'attrs']
         for attr in required_attrs:
             if not hasattr(radar, attr):
                 raise TypeError(f"Radar-like object must have a '{attr}' attribute/method.")
         if not callable(getattr(radar, 'beam')):
             raise TypeError("Radar-like object 'beam' attribute must be callable.")
-        if not callable(getattr(radar, 'iead_to_lla')):
-            raise TypeError("Radar-like object 'iead_to_lla' attribute must be callable.")
 
         self.radar = radar
         self.target_instrument = target_instrument
@@ -86,7 +86,11 @@ class RadarOverlayInterface(PlottableInstrument):
         target_show_kwargs = kwargs
 
         # 1. Show the target instrument
-        returned_ax = self.target_instrument.show(dt, ax=ax, **target_show_kwargs)
+        try:
+            returned_ax = self.target_instrument.show(dt, replace_ax=ax, **target_show_kwargs)
+        except AttributeError:
+            returned_ax = self.target_instrument.show(dt, ax=ax, **target_show_kwargs)
+            
 
         # 2. Perform radar annotations if requested by flags
         if annotate_beams_flag:
@@ -226,12 +230,12 @@ class RadarOverlayInterface(PlottableInstrument):
             return ax
 
         orthogonal_direction = (start_az + 90) % 360
-        center_start_pos = self.radar.iead_to_lla(start_el, start_az, range_km)
+        center_start_pos = self.radar.position.ead_to_lla(start_el, start_az, range_km)
         cross_scan_dist_km = range_km * np.tan(np.deg2rad(self.radar.beamwidth / 2.))
         
         corner1 = center_start_pos.ead_to_lla(0, orthogonal_direction, cross_scan_dist_km)
         corner2 = center_start_pos.ead_to_lla(0, orthogonal_direction, -cross_scan_dist_km)
-        center_end_pos = self.radar.iead_to_lla(end_el, end_az, range_km)
+        center_end_pos = self.radar.position.ead_to_lla(end_el, end_az, range_km)
         corner3 = center_end_pos.ead_to_lla(0, orthogonal_direction, -cross_scan_dist_km)
         corner4 = center_end_pos.ead_to_lla(0, orthogonal_direction, cross_scan_dist_km)
         

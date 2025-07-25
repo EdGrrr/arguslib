@@ -8,7 +8,6 @@ from ..misc.geo import ft_to_km
 from ..instruments.instruments import PlottableInstrument
 from ..camera.camera import Camera
 from ..camera.direct_camera import DirectCamera
-
 from ..instruments import Position
 from .fleet import Fleet
 
@@ -121,12 +120,13 @@ class AircraftInterface(PlottableInstrument):
         print(f"Loading ADS-B data from: {adsb_file_path_base}")
         self.fleet.load_output(str(adsb_file_path_base))
 
-        print("Attempting to assign ERA5 wind data to fleet...")
-        self.fleet.assign_era5_winds() # This method has its own error handling and print statements
+        if not self.fleet.has_notnull_data('uwind'):
+            print("Attempting to assign ERA5 wind data to fleet...")
+            self.fleet.assign_era5_winds() # This method has its own error handling and print statements
         print("Flight data loading and ERA5 wind assignment process complete.")
 
     def get_trails(self, time, **kwargs):
-        kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
+        kwargs = {"wind_filter": 10, "tlen": 3600, 'include_time':True} | kwargs
         return self.fleet.get_trails(time, **kwargs)
 
     def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
@@ -191,26 +191,41 @@ class AircraftInterface(PlottableInstrument):
             lons = trail_latlons[acft][0]
             lats = trail_latlons[acft][1]
             alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
+            # Get the times array!
+            times = trail_latlons[acft][2] # Assuming get_trails returns this
 
             current_pos = self.fleet.aircraft[acft].pos.interpolate_position(timestamp)
+            current_time = timestamp # Or get a more precise time if available
+            
             lons = np.append(lons, current_pos[0])
             lats = np.append(lats, current_pos[1])
-            alts_km = np.append(
-                alts_km, ft_to_km(current_pos[2])
-            )
+            alts_km = np.append(alts_km, ft_to_km(current_pos[2]))
+            # Append the current time to the times array
+            times = np.append(times, current_time)
 
             positions = [
                 Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_km)
             ]
+            # Make a copy of the kwargs to safely modify
+            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
+            
+            # Pop the special 'plotting_method' so it's not passed to the generic call
+            plotting_method = trail_plot_args.pop('plotting_method', None)
+
+            acft_kwargs = {'color': f"#{acft}" if color_icao else 'red', 'label': f"{acft}" if label_acft else None}
+            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
+            # This is safe because 'plotting_method' and other special kwargs are removed.
             self.camera.annotate_positions(
-                positions,
-                timestamp,
-                ax,
-                color="r" if not color_icao else f"#{acft}",
-                lw=1,
-                label=f"{acft}" if label_acft else None,
-                **(plot_kwargs | plot_trails_kwargs),
+                positions, dt, ax, **(acft_kwargs | trail_plot_args)
             )
+
+            # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
+            if plotting_method == 'intersect_plot':
+                # Define kwargs specifically for the intersection markers
+                intersect_kwargs = {'marker': 'X', 's': 25}
+                self.camera.annotate_intersections(
+                    positions, times, dt, ax,  **(acft_kwargs | trail_plot_args | intersect_kwargs)
+                )
             self.camera.annotate_positions(
                 positions[-1:],
                 timestamp,
@@ -218,7 +233,7 @@ class AircraftInterface(PlottableInstrument):
                 color="r",
                 marker="o",
                 markersize=2,
-                **(plot_kwargs | plot_plane_kwargs),
+                **trail_plot_args,
             )
 
     def to_image_array(self, time=True):
@@ -247,6 +262,13 @@ class AircraftInterface(PlottableInstrument):
             )
 
 
+class AutomaticADSBAircraftInterface(AircraftInterface):
+    def __init__(self, camera: PlottableInstrument):
+        super().__init__(camera)
+        
+    def show(self, dt, *args, **kwargs):
+        self.load_flight_data(dt)
+        return super().show(dt, *args, **kwargs)
 
 # %%
 # %%
