@@ -137,7 +137,7 @@ class RadarData:
                 match = re.search(r'(\d{4}\d{2}\d{2}-\d{2}\d{2}\d{2})', filename_base)
                 if match:
                     file_start_dt_from_name = datetime.datetime.strptime(match.group(1), "%Y%m%d-%H%M%S")
-                    if file_start_dt_from_name == dt:
+                    if file_start_dt_from_name.replace(microsecond=0) == dt.replace(microsecond=0):
                         return f_path
 
                 

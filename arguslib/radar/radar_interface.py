@@ -55,7 +55,7 @@ class RadarInterface(PlottableInstrument):
 
     def show_camera(self, dt, show_legend=False, ax=None, kwargs_beam={}, **kwargs):
         # Uses the overlay interface to show the target, which then delegates
-        return self._overlay_interface.show(dt, ax=ax, **kwargs)
+        return self._overlay_interface.show(dt, ax=ax, allow_timestamp_updates=False, **kwargs)
 
     def show(self, dt, ax=None, var="DBZ",
              kwargs_camera=None,
@@ -235,3 +235,10 @@ class RadarInterface(PlottableInstrument):
         )
 
         return ax_cam, ax_radar
+
+    def annotate_intersections(
+        self, positions, times, dt, ax, **kwargs
+    ):
+        return self.radar.annotate_intersections(positions, times, dt, ax[1], **kwargs)
+    
+

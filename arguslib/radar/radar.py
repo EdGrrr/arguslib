@@ -1,7 +1,8 @@
 from arguslib.instruments.instruments import Instrument, Position
 from arguslib.misc.plotting import TimestampedFigure, plot_beam
+from arguslib.misc.interpolation import interpolate_to_intersection
 
-
+import datetime
 import numpy as np
 import pyart
 import yaml
@@ -21,23 +22,23 @@ class Radar(Instrument):
             return np.array(
                 [
                     [
-                        self.iead_to_lla(radar_elevation, radar_azimuth, radar_dist),
-                        self.iead_to_lla(
+                        self.position.ead_to_lla(radar_elevation, radar_azimuth, radar_dist),
+                        self.position.ead_to_lla(
                             radar_elevation + self.beamwidth / 2,
                             radar_azimuth,
                             radar_dist,
                         ),
-                        self.iead_to_lla(
+                        self.position.ead_to_lla(
                             radar_elevation,
                             radar_azimuth + self.beamwidth / 2,
                             radar_dist,
                         ),
-                        self.iead_to_lla(
+                        self.position.ead_to_lla(
                             radar_elevation - self.beamwidth / 2,
                             radar_azimuth,
                             radar_dist,
                         ),
-                        self.iead_to_lla(
+                        self.position.ead_to_lla(
                             radar_elevation,
                             radar_azimuth - self.beamwidth / 2,
                             radar_dist,
@@ -49,7 +50,7 @@ class Radar(Instrument):
         else:
             return np.array(
                 [
-                    [self.iead_to_lla(radar_elevation, radar_azimuth, radar_dist)]
+                    [self.ead_to_lla(radar_elevation, radar_azimuth, radar_dist)]
                     for radar_dist in radar_distances
                 ]
             )
@@ -128,10 +129,13 @@ class Radar(Instrument):
         )
 
         return ax
+    
+    
 
     def annotate_positions(
         self, positions, dt, ax, *args, plotting_method=None, label=None, **kwargs
     ):
+        interpolation_data = kwargs.pop('interpolation_data', None)
         # project the positions to the xy plane...
         xlims = ax.get_xlim()
 
@@ -140,7 +144,7 @@ class Radar(Instrument):
                 "dt must be provided for radar positions to get the azimuth"
             )
 
-        eads = [self.target_iead(p) for p in positions]
+        eads = [self.position.target_ead(p) for p in positions]
 
         elevs = np.array([ead[0] for ead in eads])
         azimuths = np.array([ead[1] for ead in eads])
@@ -164,7 +168,7 @@ class Radar(Instrument):
         if not plot_filter.any():
             return
         if plotting_method is None:
-            ax.plot(xs[plot_filter], ys[plot_filter], *args, **kwargs)
+            ax.plot(xs[plot_filter], ys[plot_filter], *args,label=label, **kwargs)
         elif plotting_method == "sized_plot":
             # vary the size based on the offset
             sizes = 1 / np.clip(np.abs(offsets[plot_filter]), 0, 5) * 10
@@ -182,51 +186,58 @@ class Radar(Instrument):
                 *args,
                 **kwargs,
             )
-        elif plotting_method == "intersect_plot":
-            
-            ax.plot(
-                xs[plot_filter],
-                ys[plot_filter],
-                *args,
-                label=label,
-                **kwargs,
-            )
-            # think this has a fit when the length is only one point...
-            if len(offsets) == 1:
-                return
-            # where do we go theta_seps +ve to -ve
-            shift_indices = np.argwhere(
-                (np.diff(np.sign(offsets)) != 0)
-                & ~np.isnan(offsets[:-1])
-                & ~np.isnan(offsets[1:])
-            )[:, 0]
-            # fit for x and y where offsets = 0
-            doffset_dx = (offsets[shift_indices] - offsets[shift_indices + 1]) / (
-                xs[shift_indices] - xs[shift_indices + 1]
-            )
-            doffset_dy = (offsets[shift_indices] - offsets[shift_indices + 1]) / (
-                ys[shift_indices] - ys[shift_indices + 1]
-            )
-            x_intersect = xs[shift_indices] - offsets[shift_indices] / doffset_dx
-            y_intersect = ys[shift_indices] - offsets[shift_indices] / doffset_dy
-
-            # if plot_filter.any():
-            #     print(shift_indices)
-            #     print(theta_seps[shift_indices], theta_seps[shift_indices + 1])
-            #     print(offsets[shift_indices], offsets[shift_indices - 1])
-            #     print(xs[shift_indices], xs[shift_indices - 1])
-            #     print(doffset_dx, doffset_dy)
-
-            ax.scatter(  # should determine the actual intersection point and then put a blob there...
-                x_intersect,
-                y_intersect,
-                s=5,
-                *args,
-                **kwargs,
-            )
         else:
             getattr(ax, plotting_method)(
                 xs[plot_filter], ys[plot_filter], *args, **kwargs
             )
 
         ax.set_xlim(xlims)
+        
+        
+    def annotate_intersections(self, positions, times, dt, ax, **kwargs):
+        """Calculates and annotates where a given path intersects the radar scan."""
+
+        # 1. This logic is the same as the start of annotate_positions
+        if dt is None:
+            raise ValueError("dt must be provided for radar positions")
+
+        eads = [self.position.target_ead(p) for p in positions]
+        elevs = np.array([ead[0] for ead in eads])
+        azimuths = np.array([ead[1] for ead in eads])
+        dists = np.array([ead[2] for ead in eads])
+        azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
+        theta_seps = azimuths % 360 - azimuth % 360
+        offsets = dists * np.sin(np.deg2rad(theta_seps))
+        ys = dists * np.sin(np.deg2rad(elevs))
+        xs = dists * np.cos(np.deg2rad(elevs)) * np.cos(np.deg2rad(theta_seps))
+        if azimuth > 90 and azimuth < 270:
+            xs = -xs
+
+        # Use the interpolation helper to find the intersection points
+        intersections = interpolate_to_intersection(
+            offsets=offsets,
+            coords_to_interpolate={'x': xs, 'y': ys},
+            data_to_interpolate={'time': times}
+        )
+
+        # Get the current x-axis limits from the plot before looping
+        xlims = ax.get_xlim()
+
+        # Annotate the results on the plot
+        for point in intersections:
+            # *** ADDED CHECK HERE ***
+            # Only annotate if the point is within the visible x-axis of the plot.
+            if xlims[0] <= point['x'] <= xlims[1]:
+                # This logic is now inside the 'if' block.
+                # midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                # dt_seconds_from_midnight = (dt - midnight).total_seconds()
+                seconds_at_intersect = point['time']
+                # time_delta_seconds = dt_seconds_from_midnight - seconds_at_intersect
+                label = f"{seconds_at_intersect/60:.0f}min"
+                
+                ax.scatter(point['x'], point['y'], **kwargs)
+                ax.text(point['x'], point['y'], label, fontsize=8, color='white',
+                    bbox=dict(facecolor=kwargs.get('color', 'magenta'), alpha=0.6, pad=1), ha='left', va='bottom')
+        
+        ax.set_xlim(xlims)
+

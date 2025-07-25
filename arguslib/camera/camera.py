@@ -190,6 +190,7 @@ class Camera(Instrument):
         fail_if_no_data=True,
         imshow_kw={},
         brightness_adjust=1.0,
+        allow_timestamp_updates=True,
         **kwargs,
     ):
         """Renders the camera image for a given datetime on a Matplotlib axis.
@@ -280,7 +281,8 @@ class Camera(Instrument):
 
         try:
             img, timestamp = self.get_data_time(dt, return_timestamp=True)
-            ax.get_figure().timestamp = timestamp
+            if allow_timestamp_updates:
+                ax.get_figure().timestamp = timestamp
         except FileNotFoundError as e:
             if fail_if_no_data:
                 raise e
