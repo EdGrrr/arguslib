@@ -19,9 +19,9 @@ def ead_to_xyz(target_elevation, target_azimuth, target_distance):
 
 def xyz_to_ead(target_x, target_y, target_z):
     target_distance = np.sqrt(target_x**2 + target_y**2 + target_z**2)
-    target_elevation = np.rad2deg(
-        np.arctan2(target_z, np.sqrt(target_x**2 + target_y**2))
-    )
+    # Clamp the argument to arcsin to avoid NaN from floating point errors
+    elevation_ratio = np.clip(target_z / target_distance, -1.0, 1.0)
+    target_elevation = np.rad2deg(np.arcsin(elevation_ratio))
     target_azimuth = np.rad2deg(np.arctan2(target_x, target_y))
     return np.array([target_elevation, target_azimuth, target_distance])
 
@@ -121,26 +121,36 @@ class Position:
     #  - Distance in km
 
     def target_ead(self, target_position):
-        """Calculates the elevation, azimuth, and distance to a target position.
-
-        Args:
-            target_position (Position): The target position.
-
-        Returns:
-            np.ndarray: An array containing [elevation, azimuth, distance].
-                        Elevation and azimuth are in degrees, distance is in km.
         """
-        # Approximate - can use pyproj for exact (or with large distances)
-        distance = haversine(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        alt_diff = target_position.alt - self.alt
+        Calculates the elevation, azimuth, and distance to a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # Check if input is a list or a single object
+        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
+        
+        targets = target_position if is_list else [target_position]
+
+        # Extract target coordinates into numpy arrays
+        target_lons = np.array([p.lon for p in targets])
+        target_lats = np.array([p.lat for p in targets])
+        target_alts = np.array([p.alt for p in targets])
+
+        # Perform vectorized calculations
+        distance = haversine(self.lon, self.lat, target_lons, target_lats)
+        alt_diff = target_alts - self.alt
+        
+        # Avoid division by zero for elevation calculation when distance is zero
+        distance_safe = np.where(distance == 0, 1e-9, distance)
+        
         target_distance = np.sqrt(distance**2 + alt_diff**2)
-        target_elevation = np.rad2deg(np.arctan2(alt_diff, distance))
-        target_azimuth = bearing(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        return np.array([target_elevation, target_azimuth, target_distance])
+        target_elevation = np.rad2deg(np.arctan2(alt_diff, distance_safe))
+        target_azimuth = bearing(self.lon, self.lat, target_lons, target_lats)
+        
+        # Stack results into an (N, 3) array
+        result = np.vstack([target_elevation, target_azimuth, target_distance]).T
+        
+        # Return a single array or the full array to match input type
+        return result[0] if not is_list else result
 
     # XYZ
     #  - X East-West distace in km
@@ -148,45 +158,65 @@ class Position:
     #  - Z altitude in km
 
     def target_xyz(self, target_position):
-        """Calculates the relative X, Y, Z coordinates to a target position.
-
-        Args:
-            target_position (Position): The target position.
-
-        Returns:
-            np.ndarray: An array containing [X, Y, Z] distances in km, where
-                        X is East-West, Y is North-South, and Z is vertical.
         """
-        # Assume Earth is locally flat, but also spherical
-        distance = haversine(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        target_z = target_position.alt - self.alt
-        target_bearing = bearing(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
+        Calculates the relative X, Y, Z coordinates to a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # Check if input is a list or a single object
+        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
+        
+        targets = target_position if is_list else [target_position]
+    
+        # Extract target coordinates into numpy arrays
+        target_lons = np.array([p.lon for p in targets])
+        target_lats = np.array([p.lat for p in targets])
+        target_alts = np.array([p.alt for p in targets])
+
+        # Perform vectorized calculations
+        distance = haversine(self.lon, self.lat, target_lons, target_lats)
+        target_z = target_alts - self.alt
+        target_bearing = bearing(self.lon, self.lat, target_lons, target_lats)
+        
         target_x = distance * np.sin(np.deg2rad(target_bearing))
         target_y = distance * np.cos(np.deg2rad(target_bearing))
-        return np.array([target_x, target_y, target_z])
+
+        # Stack results into an (N, 3) array
+        result = np.vstack([target_x, target_y, target_z]).T
+        
+        # Return a single array or the full array to match input type
+        return result[0] if not is_list else result
 
     def ead_to_lla(self, target_elevation, target_azimuth, target_distance):
-        """Converts elevation, azimuth, and distance to a new Position.
-
-        Args:
-            target_elevation (float): Elevation from the horizontal in degrees.
-            target_azimuth (float): Azimuth from North in degrees.
-            target_distance (float): Distance in km.
-
-        Returns:
-            Position: The new geographical position.
         """
-        return self.xyz_to_lla(
-            *ead_to_xyz(target_elevation, target_azimuth, target_distance)
-        )
+        Converts elevation, azimuth, and distance to a new Position
+        using a spherical Earth model. Handles elevations > 90 degrees.
+        """
+        from ..misc.geo import destination_point
+
+        # Normalize elevation and azimuth for cases where elevation > 90 degrees.
+        # This maps "over-the-top" coordinates to their forward-facing equivalent.
+        if target_elevation > 90.0:
+            target_azimuth = (target_azimuth + 180.0) % 360.0
+            target_elevation = 180.0 - target_elevation
+
+        # Calculate the horizontal distance traveled over the Earth's surface
+        horiz_dist_km = target_distance * np.cos(np.deg2rad(target_elevation))
+        
+        # Calculate the change in altitude
+        alt_diff_km = target_distance * np.sin(np.deg2rad(target_elevation))
+        
+        # Calculate the new lat/lon using the accurate spherical model
+        new_lon, new_lat = destination_point(self.lon, self.lat, target_azimuth, horiz_dist_km)
+        
+        # Calculate the new altitude
+        new_alt = self.alt + alt_diff_km
+        
+        return Position(new_lon, new_lat, new_alt)
+
 
     def xyz_to_lla(self, target_x, target_y, target_z):
         # Assume Earth is locally flat, but also spherical
-        lon = self.lon + target_x / (111.111 * np.cos(self.lat))
+        lon = self.lon + target_x / (111.111 * np.cos(np.deg2rad(self.lat)))
         lat = self.lat + target_y / (111.111)
         return Position(lon, lat, target_z + self.alt)
 
@@ -312,8 +342,22 @@ class Instrument(PlottableInstrument):
         return instrument_elevation, instrument_azimuth, dist
 
     def target_iead(self, target_position: Position):
-        ead = self.position.target_ead(target_position)
-        return self.gead_to_iead(*ead)
+        """
+        Calculates instrument-relative EAD from a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # This call is now vectorized
+        eads = self.position.target_ead(target_position)
+
+        # Handle both single (1D array) and multiple (2D array) positions
+        if eads.ndim == 1:
+            return np.array(self.gead_to_iead(*eads))
+        else:
+            elevations, azimuths, dists = eads[:, 0], eads[:, 1], eads[:, 2]
+            # gead_to_iead is already vector-ready due to numpy operations
+            iead_tuple = self.gead_to_iead(elevations, azimuths, dists)
+            # Return as a stacked (N, 3) numpy array
+            return np.vstack(iead_tuple).T
 
     def iead_to_lla(self, elevation, azimuth, dist):
         return self.position.ead_to_lla(*self.iead_to_gead(elevation, azimuth, dist))

@@ -56,13 +56,27 @@ def interpolate_to_intersection(
         # Interpolate other data (e.g., time)
         for key, values in data_to_interpolate.items():
             val1, val2 = values[idx], values[idx + 1]
-            # Handle non-numeric types like datetimes by interpolating their numeric representation
+
+            # Check for invalid values first. np.isnan doesn't work on datetimes.
+            is_val1_nan = isinstance(val1, float) and np.isnan(val1)
+            is_val2_nan = isinstance(val2, float) and np.isnan(val2)
+
+            if is_val1_nan or is_val2_nan:
+                intersection_point[key] = np.nan
+                continue
+
+            # Handle datetimes
             if isinstance(val1, dt.datetime) and isinstance(val2, dt.datetime):
-                 val1_ts, val2_ts = val1.timestamp(), val2.timestamp()
-                 interpolated_ts = val1_ts + t * (val2_ts - val1_ts)
-                 intersection_point[key] = dt.datetime.fromtimestamp(interpolated_ts, tz=dt.timezone.utc)
+                val1_ts, val2_ts = val1.timestamp(), val2.timestamp()
+                interpolated_ts = val1_ts + t * (val2_ts - val1_ts)
+                tz = getattr(val1, 'tzinfo', None) or getattr(val2, 'tzinfo', None) or dt.timezone.utc
+                intersection_point[key] = dt.datetime.fromtimestamp(interpolated_ts, tz=tz)
+            # Handle numeric types
+            elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                intersection_point[key] = val1 + t * (val2 - val1)
+            # Handle mixed or other unsupported types by assigning NaN
             else:
-                 intersection_point[key] = val1 + t * (val2 - val1)
+                intersection_point[key] = np.nan
 
         intersections.append(intersection_point)
 

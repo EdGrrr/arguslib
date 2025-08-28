@@ -11,46 +11,13 @@ class TimestampedFigure(Figure):
         self.timestamp = timestamp
         Figure.__init__(self, *args, **kwargs)
         
-
-
-# def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
-#     # if ax is None:
-#     #     ax = plt.gca()
-
-#     range_out = {}
-#     kwargs = {"c": "orange", "lw": 0.7} | kwargs
-#     for rd in ranges:
-#         # get the positions at the same altitude, but at distance rd
-#         global_elevs = np.zeros(37)
-#         global_azis = np.arange(0, 361, 10)
-#         global_dists = np.ones(37) * rd
-
-#         # convert to lat lon positions
-#         positions = [
-#             camera.position.ead_to_lla(global_elev, global_azi, global_dist)
-#             for global_elev, global_azi, global_dist in zip(
-#                 global_elevs, global_azis, global_dists
-#             )
-#         ]
-
-#         # then move them to the correct altitude
-#         positions = [Position(pos.lon, pos.lat, alt) for pos in positions]
-
-#         camera.annotate_positions(
-#             positions,
-#             None,
-#             ax=ax,
-#             **kwargs,
-#         )
-#     return range_out
-
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
+    """
+    Plots range rings on a camera image. Each ring is plotted in a separate
+    call to ensure they are not connected.
+    """
     # This helper function calculates a destination lat/lon using spherical geometry
     def calculate_destination_point(start_lon, start_lat, bearing_deg, distance_km):
-        """
-        Calculates a destination point given a starting point, bearing,
-        and distance along a great-circle path.
-        """
         R = 6371.0  # Average Earth radius in km
         
         lat1_rad = np.deg2rad(start_lat)
@@ -67,28 +34,27 @@ def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs)
                                      
         return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
 
-    range_out = {}
-    kwargs = {"c": "orange", "lw": 0.7} | kwargs
-    for rd in ranges:
-        # Generate points for a ring at a specific ground distance 'rd'
-        azimuths_deg = np.arange(0, 361, 10)
-        positions = []
-        for azi in azimuths_deg:
-            # Calculate the destination lat/lon using the correct spherical math
-            target_lon, target_lat = calculate_destination_point(
-                camera.position.lon, camera.position.lat, azi, rd
-            )
-            # Create a Position object at the desired altitude
-            positions.append(Position(target_lon, target_lat, alt))
+    plot_kwargs = {"c": "orange", "lw": 0.7} | kwargs
+    azimuths_deg = np.arange(0, 361, 10)
 
-        # Annotate the generated positions on the camera image
+    # Loop to generate and plot each ring separately
+    for rd in ranges:
+        # Vectorized calculation for all points in a single ring
+        target_lons, target_lats = calculate_destination_point(
+            camera.position.lon, camera.position.lat, azimuths_deg, rd
+        )
+        
+        positions = [Position(lon, lat, alt) for lon, lat in zip(target_lons, target_lats)]
+
+        # A single annotation call for each ring
         camera.annotate_positions(
             positions,
             dt,
             ax=ax,
-            **kwargs,
+            **plot_kwargs,
         )
-    return range_out
+        
+    return {}
 
 
 def plot_beam(
@@ -218,3 +184,26 @@ def make_camera_axes(
         ax.set_xticklabels([])
         ax.set_yticklabels([])
     return ax
+
+
+
+def get_timestamp_from_ax(ax):
+    # ax is an axes on a timestamped figure, or an "axes iterable" which can contain either axes or more axes itereables.
+    try:
+        # ax is a matplotlib ax
+        fig = ax.get_figure()
+        if fig is None:
+            return None
+        return fig.timestamp
+    except AttributeError as e:
+        if "SubFigure" in e.args[0]:
+            return ax.get_figure().get_figure().timestamp
+        try:
+            i = 0
+            timestamp = None
+            while timestamp is None and i < len(ax):
+                timestamp = get_timestamp_from_ax(ax[i])
+                i += 1
+            return timestamp
+        except TypeError:
+            return None

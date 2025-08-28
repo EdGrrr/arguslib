@@ -188,7 +188,7 @@ class AircraftPos:
 
         return track_pos
 
-    def interpolate_position(self, dtime):
+    def interpolate_position(self, dtime, alt_var='alt_geom'):
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
         index = daysec // self.time_resolution
@@ -203,7 +203,7 @@ class AircraftPos:
         ]  # Time since the aircraft passed this point
         lon = self.positions[index:index+2, self.variables.index("lon")]
         lat = self.positions[index:index+2, self.variables.index("lat")]
-        alt = self.positions[index:index+2, self.variables.index("alt_geom")]
+        alt = self.positions[index:index+2, self.variables.index(alt_var)]
 
         pos = np.array([lon, lat, alt])
         # Handle NaNs that might arise from slicing at the edge
@@ -413,6 +413,8 @@ class Fleet:
 
         if self.loaded_file == filename:
             return
+        
+        print(f"Loading ADS-B data from: {filename}")
 
         acft_list = []
         acft_types = {}
@@ -587,13 +589,14 @@ class Fleet:
                 raise RuntimeError(msg)
 
             print(f"Attempting to download ERA5 wind data for {base_date.date()}...")
-            try:
-                download_era5_winds(base_date)
-                print("Download attempt finished. Re-attempting wind assignment.")
-                return self.assign_era5_winds(_download_attempted_this_call=True)
-            except Exception as e:
-                print(f"An unexpected error occurred during ERA5 download for {base_date.date()}: {e}. ERA5 winds will be unavailable.")
-                return
+            raise ValueError("There is no ERA5 data downloaded for this date.")
+            # try:
+            #     download_era5_winds(base_date)
+            #     print("Download attempt finished. Re-attempting wind assignment.")
+            #     return self.assign_era5_winds(_download_attempted_this_call=True)
+            # except Exception as e:
+            #     print(f"An unexpected error occurred during ERA5 download for {base_date.date()}: {e}. ERA5 winds will be unavailable.")
+            #     return
 
         # --- 3. Vectorized Data Preparation ---
         lon_idx, lat_idx, alt_idx = self.variables.index("lon"), self.variables.index("lat"), self.variables.index("alt_geom")

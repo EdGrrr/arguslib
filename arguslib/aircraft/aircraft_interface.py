@@ -2,6 +2,8 @@ import numpy as np
 import datetime
 from pathlib import Path
 
+from arguslib.misc.plotting import get_timestamp_from_ax
+
 
 from ..misc.geo import ft_to_km
 
@@ -117,13 +119,12 @@ class AircraftInterface(PlottableInstrument):
                 f"or {adsb_file_path_base.with_suffix('.txt')}"
             )
 
-        print(f"Loading ADS-B data from: {adsb_file_path_base}")
         self.fleet.load_output(str(adsb_file_path_base))
 
         if not self.fleet.has_notnull_data('uwind'):
             print("Attempting to assign ERA5 wind data to fleet...")
             self.fleet.assign_era5_winds() # This method has its own error handling and print statements
-        print("Flight data loading and ERA5 wind assignment process complete.")
+            print("Flight data loading and ERA5 wind assignment process complete.")
 
     def get_trails(self, time, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600, 'include_time':True} | kwargs
@@ -169,11 +170,13 @@ class AircraftInterface(PlottableInstrument):
             # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
             timestamp = self.camera.data_loader.current_image_time
         else:
-            try:
-                timestamp = ax.get_figure().timestamp
-            except AttributeError:
-                timestamp = ax[-1].get_figure().timestamp
-            
+            timestamp = get_timestamp_from_ax(ax)
+
+
+        loaded_date = datetime.datetime.strptime(self.fleet.loaded_file.split("/")[-1], "%Y%m%d_ADS-B")
+        if timestamp.replace(hour=0, minute=0, second=0, microsecond=0) != loaded_date:
+            raise ValueError(f"Plotting timestamp {timestamp} does not match loaded date {loaded_date}")
+
         kwargs['winds'] = advection_winds
         trail_latlons = self.get_trails(timestamp, **kwargs)
         trail_alts_geom = self.fleet.get_data(timestamp, "alt_geom", tlen=kwargs["tlen"])
@@ -223,6 +226,7 @@ class AircraftInterface(PlottableInstrument):
             if plotting_method == 'intersect_plot':
                 # Define kwargs specifically for the intersection markers
                 intersect_kwargs = {'marker': 'X', 's': 25}
+                acft_kwargs.pop('label', None)
                 self.camera.annotate_intersections(
                     positions, times, dt, ax,  **(acft_kwargs | trail_plot_args | intersect_kwargs)
                 )

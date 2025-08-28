@@ -4,14 +4,20 @@ import numpy as np
 R_E = 6372.8  # see http://rosettacode.org/wiki/Haversine_formula
 
 def haversine(lon1, lat1, lon2, lat2):
-    """Computes the Haversine distance between two points in km"""
-    dlat = math.pi * (lat2 - lat1) / 180.0
-    dlon = math.pi * (lon2 - lon1) / 180.0
+    """
+    Computes the Haversine distance between two points in km.
+    This version is vectorized to handle numpy arrays.
+    """
+    # Ensure inputs are numpy arrays for vector operations
+    lon1, lat1, lon2, lat2 = map(np.asarray, [lon1, lat1, lon2, lat2])
 
-    lat1 = math.pi * (lat1) / 180.0
-    lat2 = math.pi * (lat2) / 180.0
+    dlat = np.deg2rad(lat2 - lat1)
+    dlon = np.deg2rad(lon2 - lon1)
 
-    arc = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * (np.sin(dlon / 2) ** 2)
+    lat1_rad = np.deg2rad(lat1)
+    lat2_rad = np.deg2rad(lat2)
+
+    arc = np.sin(dlat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * (np.sin(dlon / 2) ** 2)
     c = 2 * np.arcsin(np.sqrt(arc))
     return R_E * c
 
@@ -34,6 +40,34 @@ def xy_offset_to_ll(lon1, lat1, xoff, yoff):
         lon1 + (xoff / (111.111 * np.cos(np.deg2rad(lat1)))),
         lat1 + (yoff / 111.111),
     )
+    
+def destination_point(lon, lat, bearing_deg, distance_km):
+    """
+    Calculates a destination point given a starting point, bearing,
+    and distance along a great-circle path on a sphere.
+    """
+    R = 6371.0  # Average Earth radius in km
+    
+    lat1_rad = np.deg2rad(lat)
+    lon1_rad = np.deg2rad(lon)
+    bearing_rad = np.deg2rad(bearing_deg)
+    
+    d_div_R = distance_km / R
+    
+    # Clamp the argument to arcsin to avoid NaN from floating point errors
+    sin_lat1 = np.sin(lat1_rad)
+    cos_lat1 = np.cos(lat1_rad)
+    sin_d_R = np.sin(d_div_R)
+    cos_d_R = np.cos(d_div_R)
+    
+    arg_for_arcsin = sin_lat1 * cos_d_R + cos_lat1 * sin_d_R * np.cos(bearing_rad)
+    lat2_rad = np.arcsin(np.clip(arg_for_arcsin, -1.0, 1.0))
+    
+    lon2_rad = lon1_rad + np.arctan2(np.sin(bearing_rad) * sin_d_R * cos_lat1,
+                                 cos_d_R - sin_lat1 * np.sin(lat2_rad))
+                                 
+    return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
+
 
 def calculate_bearing(lat1, lon1, lat2, lon2):
     # Convert from degrees to radians

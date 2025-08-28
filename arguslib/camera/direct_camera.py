@@ -6,7 +6,7 @@ from typing import override
 from ..misc.geo import haversine
 from ..misc.plotting import plot_range_rings
 
-class DirectCamera(Camera):
+class DirectCamera(Camera): #FIXME: annotation (range rings) is broken for direct camera but not direct undistorted
     """A Camera subclass that renders annotations directly onto the image array.
 
     This class is optimized for performance, especially for creating videos.
