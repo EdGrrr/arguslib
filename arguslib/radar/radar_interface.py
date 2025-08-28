@@ -55,7 +55,7 @@ class RadarInterface(PlottableInstrument):
 
     def show_camera(self, dt, show_legend=False, ax=None, kwargs_beam={}, **kwargs):
         # Uses the overlay interface to show the target, which then delegates
-        return self._overlay_interface.show(dt, ax=ax, **kwargs)
+        return self._overlay_interface.show(dt, ax=ax, allow_timestamp_updates=False, **kwargs)
 
     def show(self, dt, ax=None, var="DBZ",
              kwargs_camera=None,
@@ -129,8 +129,8 @@ class RadarInterface(PlottableInstrument):
             if isinstance(fig, TimestampedFigure):
                 fig.timestamp = current_dt
         else:
-            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.2), dpi=300)
-            gs = fig.add_gridspec(1, 2, width_ratios=[0.8, 1.2])
+            fig = plt.figure(FigureClass=TimestampedFigure, timestamp=current_dt, figsize=(10, 4.9), dpi=300, constrained_layout=True)
+            gs = fig.add_gridspec(1, 2)
 
             camera_subplot_kwargs = {}
             # Check if the camera is 'allsky' to set polar projection by default
@@ -235,3 +235,10 @@ class RadarInterface(PlottableInstrument):
         )
 
         return ax_cam, ax_radar
+
+    def annotate_intersections(
+        self, positions, times, dt, ax, **kwargs
+    ):
+        return self.radar.annotate_intersections(positions, times, dt, ax[1], **kwargs)
+    
+

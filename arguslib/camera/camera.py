@@ -12,7 +12,7 @@ from ..instruments.instruments import (
     xyz_to_ead,
     rotation_matrix_i_to_g
 )
-from ..misc.geo import haversine
+from ..misc.geo import haversine, destination_point
 from ..misc.plotting import (
     get_pixel_transform,
     make_camera_axes,
@@ -123,42 +123,63 @@ class Camera(Instrument):
 
     # view here is in the camera space - we need to get the xyz in camera projection, not the world projection
     def target_pix(self, target_position: Position):
-        return self.iead_to_pix(*self.target_iead(target_position))
+        """
+        Calculates pixel coordinates for a target position.
+        Vectorized to handle a list of positions.
+        """
+        # This call is now vectorized
+        ieads = self.target_iead(target_position)
+        
+        # Handle single vs. multiple positions
+        if ieads.ndim == 1:
+            return self.iead_to_pix(*ieads)
+        else:
+            elevations, azimuths, dists = ieads[:, 0], ieads[:, 1], ieads[:, 2]
+            # iead_to_pix is vector-ready
+            return self.iead_to_pix(elevations, azimuths, dists)
+
 
     def pix_to_iead(self, pix_x, pix_y, distance=None, altitude=None):
         xyz = self.intrinsic.image_to_view(
             [pix_x * self.scale_factor, pix_y * self.scale_factor]
         )
         
-        # xyz for projection, convert to ead for projection
         uv = unit(xyz)
         if distance is None and altitude is None:
-            raise Exception("Must specify either distance or altitude") #I'd done something here but I think it was daft
-        elif distance is not None and altitude is None:
-            return xyz_to_ead(*(uv * distance))
+            raise Exception("Must specify either distance or altitude")
+        
+        # This inner function calculates the EAD and performs the critical elevation conversion
+        def calculate_and_convert_ead(dist):
+            final_xyz = uv * dist
+            # xyz_to_ead returns [elevation_from_plane, azimuth, distance]
+            ead = xyz_to_ead(*final_xyz)
+            # Convert elevation: 90 degrees - angle_from_xy_plane = angle_from_z_axis
+            ead[0] = 90.0 - ead[0]
+            return ead
+
+        if distance is not None and altitude is None:
+            return calculate_and_convert_ead(distance)
         elif distance is None and altitude is not None:
             R_i_to_g = rotation_matrix_i_to_g(*self.rotation)
-
-            # Rotate the unit view vector into the global frame.
             uv_global = R_i_to_g @ uv
 
-            # The z-component of the global vector is used to find the distance.
-            # If uv_global[2] is zero or negative, the ray is horizontal or points down,
-            # and will not intersect a higher altitude plane in the forward direction.
-            if uv_global[2] <= 1e-6:  # Avoid division by zero/small numbers
+            if uv_global[2] <= 1e-6:
                 return np.array([np.nan, np.nan, np.nan])
 
             distance = (altitude - self.position.alt) / uv_global[2]
-            return xyz_to_ead(*(uv * distance))
+            return calculate_and_convert_ead(distance)
         else:
             raise ValueError("Cannot specify both distance and altitude.")
 
-
     def iead_to_pix(self, elevation, azimuth, dist=10):
-        return (
-            self.intrinsic.view_to_image(ead_to_xyz(elevation, azimuth, dist))
-            / self.scale_factor
-        )
+        # This function is naturally vectorized because it relies on NumPy operations.
+        # Convert elevation: angle_from_xy_plane = 90 degrees - angle_from_z_axis
+        elevation_for_xyz = 90.0 - elevation
+        
+        view_vector = ead_to_xyz(elevation_for_xyz, azimuth, dist).T # ead_to_xyz seems to transpose them...
+        
+        # Transpose view_vector to (N, 3) before passing to the projection function
+        return self.intrinsic.view_to_image(view_vector) / self.scale_factor
 
     def radar_beam(self, target_elevation, target_azimuth, radar):
         # TODO: this should maybe belong somewhere else. is it still used?
@@ -184,6 +205,7 @@ class Camera(Instrument):
         fail_if_no_data=True,
         imshow_kw={},
         brightness_adjust=1.0,
+        allow_timestamp_updates=True,
         **kwargs,
     ):
         """Renders the camera image for a given datetime on a Matplotlib axis.
@@ -241,6 +263,8 @@ class Camera(Instrument):
             if hasattr(ax, "set_theta_zero_location"): # It's a polar axis
                 if theta_behaviour == "pixels":
                     ax.set_theta_offset(np.deg2rad(self.rotation[-1]))
+                    # total_rotation_deg = self.rotation[1] + self.rotation[2]
+                    # ax.set_theta_offset(np.deg2rad(total_rotation_deg))
                     # Ensure default direction if not specified or handled by lr_flip logic later
                     if not hasattr(ax, '_theta_direction_set_by_camera_show'): # Avoid double-setting
                         ax.set_theta_direction(1) # Example default, adjust if needed
@@ -272,7 +296,8 @@ class Camera(Instrument):
 
         try:
             img, timestamp = self.get_data_time(dt, return_timestamp=True)
-            ax.get_figure().timestamp = timestamp
+            if allow_timestamp_updates:
+                ax.get_figure().timestamp = timestamp
         except FileNotFoundError as e:
             if fail_if_no_data:
                 raise e
@@ -294,66 +319,53 @@ class Camera(Instrument):
     def annotate_positions(
         self, positions, dt, ax, *args, plotting_method=None, max_range_km=90, **kwargs
     ):
-        """Annotates one or more geographical positions on the camera image.
-
-        Converts a list of `Position` objects (lat, lon, alt) into pixel
-        coordinates for the given camera view and plots them on the specified
-        axis.
-
-        Args:
-            positions (list[Position]): A list of `Position` objects to annotate.
-            dt (datetime.datetime): The datetime for which the camera view is valid.
-                This can affect calibration.
-            ax (matplotlib.axes.Axes): The axis to plot the annotations on.
-            *args: Positional arguments passed to the plotting function (e.g., `ax.plot`).
-            plotting_method (str, optional): The name of the Matplotlib plotting
-                method to use (e.g., 'scatter', 'plot'). If None, `ax.plot` is used.
-                Defaults to None.
-            max_range_km (float, optional): The maximum horizontal distance (in km)
-                from the camera at which to plot positions. Defaults to 90.
-            **kwargs: Keyword arguments passed to the plotting function.
         """
-        # TODO: this should take dt into account, mostly because the calibration may change for the same camera at different times...
-        lats = [p.lat for p in positions]
-        lons = [p.lon for p in positions]
+        Annotates one or more geographical positions on the camera image.
+        This version is vectorized for performance.
+        """
+        # **THE FIX**: Check for list, tuple, or numpy array, and check for length.
+        if not isinstance(positions, (list, tuple, np.ndarray)) or len(positions) == 0:
+            return ax
 
-        dists = np.array(
-            [
-                haversine(self.position.lon, self.position.lat, lon, lat)
-                for lon, lat in zip(lons, lats)
-            ]
-        )
+        # --- Vectorized Geolocation ---
+        # NOTE: This assumes `positions` can be iterated over for list comprehension.
+        # This is safe for lists, tuples, and numpy arrays.
+        target_lons = np.array([p.lon for p in positions])
+        target_lats = np.array([p.lat for p in positions])
+        
+        dists = haversine(self.position.lon, self.position.lat, target_lons, target_lats)
+        ieads = self.target_iead(positions)
 
-        behind_camera = np.array([self.target_iead(p)[0] < 0 for p in positions])
+        if ieads.ndim == 1:
+            ieads = ieads.reshape(1, -1)
+            dists = np.array([dists]) if np.isscalar(dists) else dists
+            
+        # --- Vectorized Pixel Conversion ---
+        pl_track = self.iead_to_pix(ieads[:, 0], ieads[:, 1], ieads[:, 2])
 
-        if (dists[~np.isnan(dists)] > max_range_km).all():
-            return
+        # --- Filtering and Plotting ---
+        behind_camera = ieads[:, 0] > 90
+        in_range = dists < max_range_km
+        plot_filter = in_range & ~behind_camera
 
-        pl_track = np.array([self.target_pix(p) for p in positions])
+        if not np.any(plot_filter):
+            return ax
 
-        # if nonpolar axes, need to preserve the limits
+        filtered_track = pl_track[plot_filter]
+        
         if hasattr(ax, "set_xlim"):
             xlim = ax.get_xlim()
             ylim = ax.get_ylim()
 
         if plotting_method is None:
-            ax.plot(
-                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
-                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
-                *args,
-                **kwargs,
-            )
+            ax.plot(filtered_track[:, 0], filtered_track[:, 1], *args, **kwargs)
         else:
-            getattr(ax, plotting_method)(
-                pl_track.T[0][(dists < max_range_km) & ~behind_camera],
-                pl_track.T[1][(dists < max_range_km) & ~behind_camera],
-                *args,
-                **kwargs,
-            )
+            getattr(ax, plotting_method)(filtered_track[:, 0], filtered_track[:, 1], *args, **kwargs)
 
         if hasattr(ax, "set_xlim"):
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
+            
         return ax
     
     def distance_calibration_img(self, height_km=10):

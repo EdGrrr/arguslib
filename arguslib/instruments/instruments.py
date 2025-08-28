@@ -19,44 +19,77 @@ def ead_to_xyz(target_elevation, target_azimuth, target_distance):
 
 def xyz_to_ead(target_x, target_y, target_z):
     target_distance = np.sqrt(target_x**2 + target_y**2 + target_z**2)
-    target_elevation = np.rad2deg(
-        np.arctan2(target_z, np.sqrt(target_x**2 + target_y**2))
-    )
+    # Clamp the argument to arcsin to avoid NaN from floating point errors
+    elevation_ratio = np.clip(target_z / target_distance, -1.0, 1.0)
+    target_elevation = np.rad2deg(np.arcsin(elevation_ratio))
     target_azimuth = np.rad2deg(np.arctan2(target_x, target_y))
     return np.array([target_elevation, target_azimuth, target_distance])
 
 
+
 def rotation_matrix_i_to_g(elevation, azimuth, roll):
-    # Convert angles to radians
-    azimuth = np.deg2rad(azimuth)
-    elevation = np.deg2rad(90 - elevation)
-    roll = np.deg2rad(roll)
+    """
+    Creates a rotation matrix to transform coordinates from the instrument's
+    local frame (i) to the global frame (g).
 
-    # Azimuth rotation (Rₐ) - global z-axis
-    R_a = np.array(
-        [
-            [np.cos(azimuth), -np.sin(azimuth), 0],
-            [np.sin(azimuth), np.cos(azimuth), 0],
-            [0, 0, 1],
-        ]
-    )
+    The instrument frame is defined as:
+    - Z-axis: Along the optical axis (pointing direction).
+    - Y-axis: "Up" direction of the image sensor.
+    - X-axis: "Right" direction of the image sensor.
 
-    # Elevation rotation (Rₑ) - global x-axis
-    R_e = np.array(
-        [
-            [1, 0, 0],
-            [0, np.cos(elevation), -np.sin(elevation)],
-            [0, np.sin(elevation), np.cos(elevation)],
-        ]
-    )
+    The global frame is an East-North-Up (ENU) system.
 
-    # Roll rotation (Rᵣ) - local z-axis
-    R_r = np.array(
-        [[np.cos(roll), np.sin(roll), 0], [-np.sin(roll), np.cos(roll), 0], [0, 0, 1]]
-    )
+    Args:
+        elevation (float): The instrument's pointing elevation in degrees from the horizon.
+        azimuth (float): The instrument's pointing azimuth in degrees from North.
+        roll (float): The instrument's roll in degrees around its optical axis.
 
-    # Combined rotation matrix
-    R = R_a @ R_e @ R_r
+    Returns:
+        np.ndarray: The 3x3 rotation matrix R_i_to_g.
+    """
+    el_rad = np.deg2rad(elevation)
+    az_rad = np.deg2rad(azimuth)
+    roll_rad = np.deg2rad(roll)
+
+    # General case for non-vertical cameras
+    if np.abs(el_rad - np.pi / 2) > 1e-6:
+        # Define the instrument's optical axis (the local z-axis)
+        i_z = np.array([
+            np.cos(el_rad) * np.sin(az_rad),
+            np.cos(el_rad) * np.cos(az_rad),
+            np.sin(el_rad)
+        ])
+        
+        # Define the instrument's "right" vector (local x-axis) before roll
+        g_up = np.array([0, 0, 1])
+        i_x_preroll = np.cross(i_z, g_up)
+        # Handle nadir-pointing case
+        if np.linalg.norm(i_x_preroll) < 1e-6:
+            i_x_preroll = np.array([1, 0, 0])
+        i_x_preroll /= np.linalg.norm(i_x_preroll)
+
+        # Define the instrument's "up" vector (local y-axis) before roll
+        i_y_preroll = np.cross(i_z, i_x_preroll)
+    
+    # Special case for a vertically-pointing (zenith) camera
+    else:
+        # The optical axis is straight up.
+        i_z = np.array([0, 0, 1])
+        
+        # The pre-roll orientation is fixed to North-up, East-right, IGNORING azimuth.
+        i_x_preroll = np.array([1, 0, 0])  # East
+        i_y_preroll = np.array([0, 1, 0])  # North
+    
+    # Apply roll to the pre-roll basis vectors to get the final orientation
+    cos_r = np.cos(roll_rad)
+    sin_r = np.sin(roll_rad)
+
+    # **CORRECTED SIGNS:** This implements a clockwise rotation to match the original system
+    i_x_final = i_x_preroll * cos_r - i_y_preroll * sin_r
+    i_y_final = i_x_preroll * sin_r + i_y_preroll * cos_r
+
+    # Construct the rotation matrix from the final basis vectors
+    R = np.column_stack([i_x_final, i_y_final, i_z])
     return R
 
 
@@ -88,26 +121,36 @@ class Position:
     #  - Distance in km
 
     def target_ead(self, target_position):
-        """Calculates the elevation, azimuth, and distance to a target position.
-
-        Args:
-            target_position (Position): The target position.
-
-        Returns:
-            np.ndarray: An array containing [elevation, azimuth, distance].
-                        Elevation and azimuth are in degrees, distance is in km.
         """
-        # Approximate - can use pyproj for exact (or with large distances)
-        distance = haversine(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        alt_diff = target_position.alt - self.alt
+        Calculates the elevation, azimuth, and distance to a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # Check if input is a list or a single object
+        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
+        
+        targets = target_position if is_list else [target_position]
+
+        # Extract target coordinates into numpy arrays
+        target_lons = np.array([p.lon for p in targets])
+        target_lats = np.array([p.lat for p in targets])
+        target_alts = np.array([p.alt for p in targets])
+
+        # Perform vectorized calculations
+        distance = haversine(self.lon, self.lat, target_lons, target_lats)
+        alt_diff = target_alts - self.alt
+        
+        # Avoid division by zero for elevation calculation when distance is zero
+        distance_safe = np.where(distance == 0, 1e-9, distance)
+        
         target_distance = np.sqrt(distance**2 + alt_diff**2)
-        target_elevation = np.rad2deg(np.arctan2(alt_diff, distance))
-        target_azimuth = bearing(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        return np.array([target_elevation, target_azimuth, target_distance])
+        target_elevation = np.rad2deg(np.arctan2(alt_diff, distance_safe))
+        target_azimuth = bearing(self.lon, self.lat, target_lons, target_lats)
+        
+        # Stack results into an (N, 3) array
+        result = np.vstack([target_elevation, target_azimuth, target_distance]).T
+        
+        # Return a single array or the full array to match input type
+        return result[0] if not is_list else result
 
     # XYZ
     #  - X East-West distace in km
@@ -115,45 +158,65 @@ class Position:
     #  - Z altitude in km
 
     def target_xyz(self, target_position):
-        """Calculates the relative X, Y, Z coordinates to a target position.
-
-        Args:
-            target_position (Position): The target position.
-
-        Returns:
-            np.ndarray: An array containing [X, Y, Z] distances in km, where
-                        X is East-West, Y is North-South, and Z is vertical.
         """
-        # Assume Earth is locally flat, but also spherical
-        distance = haversine(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
-        target_z = target_position.alt - self.alt
-        target_bearing = bearing(
-            self.lon, self.lat, target_position.lon, target_position.lat
-        )
+        Calculates the relative X, Y, Z coordinates to a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # Check if input is a list or a single object
+        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
+        
+        targets = target_position if is_list else [target_position]
+    
+        # Extract target coordinates into numpy arrays
+        target_lons = np.array([p.lon for p in targets])
+        target_lats = np.array([p.lat for p in targets])
+        target_alts = np.array([p.alt for p in targets])
+
+        # Perform vectorized calculations
+        distance = haversine(self.lon, self.lat, target_lons, target_lats)
+        target_z = target_alts - self.alt
+        target_bearing = bearing(self.lon, self.lat, target_lons, target_lats)
+        
         target_x = distance * np.sin(np.deg2rad(target_bearing))
         target_y = distance * np.cos(np.deg2rad(target_bearing))
-        return np.array([target_x, target_y, target_z])
+
+        # Stack results into an (N, 3) array
+        result = np.vstack([target_x, target_y, target_z]).T
+        
+        # Return a single array or the full array to match input type
+        return result[0] if not is_list else result
 
     def ead_to_lla(self, target_elevation, target_azimuth, target_distance):
-        """Converts elevation, azimuth, and distance to a new Position.
-
-        Args:
-            target_elevation (float): Elevation from the horizontal in degrees.
-            target_azimuth (float): Azimuth from North in degrees.
-            target_distance (float): Distance in km.
-
-        Returns:
-            Position: The new geographical position.
         """
-        return self.xyz_to_lla(
-            *ead_to_xyz(target_elevation, target_azimuth, target_distance)
-        )
+        Converts elevation, azimuth, and distance to a new Position
+        using a spherical Earth model. Handles elevations > 90 degrees.
+        """
+        from ..misc.geo import destination_point
+
+        # Normalize elevation and azimuth for cases where elevation > 90 degrees.
+        # This maps "over-the-top" coordinates to their forward-facing equivalent.
+        if target_elevation > 90.0:
+            target_azimuth = (target_azimuth + 180.0) % 360.0
+            target_elevation = 180.0 - target_elevation
+
+        # Calculate the horizontal distance traveled over the Earth's surface
+        horiz_dist_km = target_distance * np.cos(np.deg2rad(target_elevation))
+        
+        # Calculate the change in altitude
+        alt_diff_km = target_distance * np.sin(np.deg2rad(target_elevation))
+        
+        # Calculate the new lat/lon using the accurate spherical model
+        new_lon, new_lat = destination_point(self.lon, self.lat, target_azimuth, horiz_dist_km)
+        
+        # Calculate the new altitude
+        new_alt = self.alt + alt_diff_km
+        
+        return Position(new_lon, new_lat, new_alt)
+
 
     def xyz_to_lla(self, target_x, target_y, target_z):
         # Assume Earth is locally flat, but also spherical
-        lon = self.lon + target_x / (111.111 * np.cos(self.lat))
+        lon = self.lon + target_x / (111.111 * np.cos(np.deg2rad(self.lat)))
         lat = self.lat + target_y / (111.111)
         return Position(lon, lat, target_z + self.alt)
 
@@ -247,8 +310,10 @@ class Instrument(PlottableInstrument):
     # ead on the other hand is an instrument property, as it depends on the instrument rotation.
 
     def iead_to_gead(self, elevation, azimuth, dist):
+        elevation_from_image = 90.0 - elevation
+
         # convert to instrument-relative xyz coordinates "view coordinates"
-        ixyz = ead_to_xyz(elevation, azimuth, dist)
+        ixyz = ead_to_xyz(elevation_from_image, azimuth, dist)
 
         # apply the rotations in this order:
         R = rotation_matrix_i_to_g(self.rotation[0], self.rotation[1], self.rotation[2])
@@ -269,12 +334,30 @@ class Instrument(PlottableInstrument):
         ixyz = inv_R @ gxyz
         # convert to instrument-relative ead coordinates
         instrument_elevation, instrument_azimuth, dist = xyz_to_ead(*ixyz)
+        
+        # Convert elevation from 'angle from instrument horizon' 
+        # to 'angle from optical axis' (90 - elev)
+        instrument_elevation = 90 - instrument_elevation
 
         return instrument_elevation, instrument_azimuth, dist
 
     def target_iead(self, target_position: Position):
-        ead = self.position.target_ead(target_position)
-        return self.gead_to_iead(*ead)
+        """
+        Calculates instrument-relative EAD from a target position.
+        Vectorized to handle a list of target positions.
+        """
+        # This call is now vectorized
+        eads = self.position.target_ead(target_position)
+
+        # Handle both single (1D array) and multiple (2D array) positions
+        if eads.ndim == 1:
+            return np.array(self.gead_to_iead(*eads))
+        else:
+            elevations, azimuths, dists = eads[:, 0], eads[:, 1], eads[:, 2]
+            # gead_to_iead is already vector-ready due to numpy operations
+            iead_tuple = self.gead_to_iead(elevations, azimuths, dists)
+            # Return as a stacked (N, 3) numpy array
+            return np.vstack(iead_tuple).T
 
     def iead_to_lla(self, elevation, azimuth, dist):
         return self.position.ead_to_lla(*self.iead_to_gead(elevation, azimuth, dist))

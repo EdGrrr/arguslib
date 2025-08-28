@@ -11,38 +11,50 @@ class TimestampedFigure(Figure):
         self.timestamp = timestamp
         Figure.__init__(self, *args, **kwargs)
         
-
-
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
-    # if ax is None:
-    #     ax = plt.gca()
+    """
+    Plots range rings on a camera image. Each ring is plotted in a separate
+    call to ensure they are not connected.
+    """
+    # This helper function calculates a destination lat/lon using spherical geometry
+    def calculate_destination_point(start_lon, start_lat, bearing_deg, distance_km):
+        R = 6371.0  # Average Earth radius in km
+        
+        lat1_rad = np.deg2rad(start_lat)
+        lon1_rad = np.deg2rad(start_lon)
+        bearing_rad = np.deg2rad(bearing_deg)
+        
+        d_div_R = distance_km / R
+        
+        lat2_rad = np.arcsin(np.sin(lat1_rad) * np.cos(d_div_R) +
+                         np.cos(lat1_rad) * np.sin(d_div_R) * np.cos(bearing_rad))
+        
+        lon2_rad = lon1_rad + np.arctan2(np.sin(bearing_rad) * np.sin(d_div_R) * np.cos(lat1_rad),
+                                     np.cos(d_div_R) - np.sin(lat1_rad) * np.sin(lat2_rad))
+                                     
+        return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
 
-    range_out = {}
-    kwargs = {"c": "orange", "lw": 0.7} | kwargs
+    plot_kwargs = {"c": "orange", "lw": 0.7} | kwargs
+    azimuths_deg = np.arange(0, 361, 10)
+
+    # Loop to generate and plot each ring separately
     for rd in ranges:
-        # get the positions at the same altitude, but at distance rd
-        global_elevs = np.zeros(37)
-        global_azis = np.arange(0, 361, 10)
-        global_dists = np.ones(37) * rd
+        # Vectorized calculation for all points in a single ring
+        target_lons, target_lats = calculate_destination_point(
+            camera.position.lon, camera.position.lat, azimuths_deg, rd
+        )
+        
+        positions = [Position(lon, lat, alt) for lon, lat in zip(target_lons, target_lats)]
 
-        # convert to lat lon positions
-        positions = [
-            camera.position.ead_to_lla(global_elev, global_azi, global_dist)
-            for global_elev, global_azi, global_dist in zip(
-                global_elevs, global_azis, global_dists
-            )
-        ]
-
-        # then move them to the correct altitude
-        positions = [Position(pos.lon, pos.lat, alt) for pos in positions]
-
+        # A single annotation call for each ring
         camera.annotate_positions(
             positions,
-            None,
+            dt,
             ax=ax,
-            **kwargs,
+            **plot_kwargs,
         )
-    return range_out
+        
+    return {}
 
 
 def plot_beam(
@@ -142,13 +154,15 @@ def make_camera_axes(
 
     if replace_ax is not None:
         fig = replace_ax.figure
-        pos = replace_ax.get_position()
+    
+        # 1. Get the subplot's grid specification (its "slot" in the layout)
+        spec = replace_ax.get_subplotspec()
+        
+        # 2. Remove the old axes from the figure
         replace_ax.remove()
-
-        ax = fig.add_axes(
-            pos,
-            projection=projection,
-        )
+        
+        # 3. Add a new subplot in the SAME grid slot
+        ax = fig.add_subplot(spec, projection=projection)
     else:
         ax = fig.add_subplot(pos, projection=projection)
 
@@ -170,3 +184,26 @@ def make_camera_axes(
         ax.set_xticklabels([])
         ax.set_yticklabels([])
     return ax
+
+
+
+def get_timestamp_from_ax(ax):
+    # ax is an axes on a timestamped figure, or an "axes iterable" which can contain either axes or more axes itereables.
+    try:
+        # ax is a matplotlib ax
+        fig = ax.get_figure()
+        if fig is None:
+            return None
+        return fig.timestamp
+    except AttributeError as e:
+        if "SubFigure" in e.args[0]:
+            return ax.get_figure().get_figure().timestamp
+        try:
+            i = 0
+            timestamp = None
+            while timestamp is None and i < len(ax):
+                timestamp = get_timestamp_from_ax(ax[i])
+                i += 1
+            return timestamp
+        except TypeError:
+            return None
