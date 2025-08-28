@@ -493,6 +493,10 @@ class Fleet:
 
         Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
         """
+        if (winds == "era5") and (("uwind" not in self.variables) or (not self.has_notnull_data('uwind'))):
+            print(f"Warning (Fleet.get_trails): No ERA5 wind data available for {dtime}. Using aircraft ADS-B winds (quite inaccurate).")
+            return self.get_trails(dtime, tlen, spread_velocity, wind_filter, include_time, winds='aircraft')
+
         trails = {}
         for ac in self.aircraft.keys():
             trails[ac] = self.aircraft[ac].get_trail(
@@ -547,7 +551,7 @@ class Fleet:
         # --- 1. Add uwind and vwind to variables ---
         new_vars = [var for var in ['uwind', 'vwind'] if var not in self.variables]
         if new_vars:
-            print(f"Adding {new_vars} to fleet variables.")
+            # print(f"Adding {new_vars} to fleet variables.")
             original_var_count = len(self.variables)
             self.variables.extend(new_vars)
             for acft in self.aircraft.values():
@@ -588,7 +592,7 @@ class Fleet:
                 print(msg)
                 raise RuntimeError(msg)
 
-            print(f"Attempting to download ERA5 wind data for {base_date.date()}...")
+            # print(f"Attempting to download ERA5 wind data for {base_date.date()}...")
             raise ValueError("There is no ERA5 data downloaded for this date.")
             # try:
             #     download_era5_winds(base_date)

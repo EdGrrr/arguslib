@@ -123,8 +123,11 @@ class AircraftInterface(PlottableInstrument):
 
         if not self.fleet.has_notnull_data('uwind'):
             print("Attempting to assign ERA5 wind data to fleet...")
-            self.fleet.assign_era5_winds() # This method has its own error handling and print statements
-            print("Flight data loading and ERA5 wind assignment process complete.")
+            try:
+                self.fleet.assign_era5_winds() # This method has its own error handling and print statements
+                print("Flight data loading and ERA5 wind assignment process complete.")
+            except ValueError:
+                print("Error occurred during flight data loading or ERA5 wind assignment. Will use aircraft ADS-B wind as a fallback.")
 
     def get_trails(self, time, **kwargs):
         kwargs = {"wind_filter": 10, "tlen": 3600, 'include_time':True} | kwargs
