@@ -9,6 +9,11 @@ from pathlib import Path
 import random
 import calendar
 from collections import defaultdict
+import io
+from contextlib import redirect_stdout, redirect_stderr
+
+from arguslib.aircraft.aircraft_interface import AutomaticADSBAircraftInterface
+from arguslib.camera.direct_camera import DirectUndistortedCamera
 
 # --- Important: Make sure arguslib is in your Python Path ---
 # You might need to do something like this at the start of your script
@@ -48,11 +53,31 @@ def get_radar(campaign_name):
 
 
 @st.cache_resource
+def get_placeholder_camera():
+    """Loads and caches a clean UndistortedCamera for initial display."""
+    return DirectUndistortedCamera.from_config("COBALT", "3-7")
+
+
+@st.cache_resource
+def get_aircraft_interface():
+    """
+    Loads and caches a reusable AutomaticADSBAircraftInterface object.
+
+    It's initialized with a placeholder instrument that will be replaced on each run.
+    This prevents reloading and reprocessing flight data for the same day, which is
+    a significant performance improvement.
+    """
+    # The initial instrument doesn't matter, as it will be replaced.
+    placeholder_cam = UndistortedCamera.from_config("COBALT", "3-7")
+    return AutomaticADSBAircraftInterface(placeholder_cam)
+
+@st.cache_resource
 def get_camera_configs():
     """Defines and caches available camera configurations."""
     # You can expand this dictionary with more camera setups
     return {
         "Single Camera (3-7)": UndistortedCamera.from_config("COBALT", "3-7"),
+        # "Camera with Aircraft Tracks (3-7)": AutomaticADSBAircraftInterface(UndistortedCamera.from_config("COBALT", "3-7")),
         "Multicam 2 (5 cameras)": CameraArray(
             [
                 UndistortedCamera.from_config("COBALT", "3-7"),
@@ -65,6 +90,7 @@ def get_camera_configs():
         ),
         # Add other CameraArray or single Camera objects here
     }
+
 
 @st.cache_data
 def find_active_year_months(campaign):
@@ -106,6 +132,25 @@ def find_available_dates_in_month(campaign, year, month):
             # Ignore errors during search for a single day
             continue
     return available_dates
+
+@st.cache_data
+def find_next_available_date(campaign, start_date):
+    """Finds the next date with data, starting from the day after start_date."""
+    locator = initialise_locator()
+    current_date = start_date + dt.timedelta(days=1)
+    # Limit search to 1 year to prevent infinite loops
+    for _ in range(365):
+        try:
+            files = locator.search(
+                "ARGUS", "rhi", campaign=campaign,
+                year=current_date.year, mon=current_date.month, day=current_date.day, hour="**"
+            )
+            if files:
+                return current_date
+        except Exception:
+            pass # Ignore errors and continue to the next day
+        current_date += dt.timedelta(days=1)
+    return None
 
 # This function is not cached with the main resource cache because it depends
 # on the user-selected inputs.
@@ -182,11 +227,11 @@ def save_case(save_path, selected_dt, camera_name):
 # --- Default/Initial View Configuration ---
 DEFAULT_YEAR = 2025
 DEFAULT_MONTH = 5
-DEFAULT_DAY = 31
-DEFAULT_SCAN_TIME_STR = "15:26:07" # H:M:S format
+DEFAULT_DAY = 1
+DEFAULT_SCAN_TIME_STR = "07:25:06" # H:M:S format
 
 st.set_page_config(layout="wide")
-st.title("🛰️ Argus Radar & Camera Interface Explorer")
+st.title("🛰️ COBALT Radar & Camera Interface Explorer")
 
 # --- Sidebar for Controls ---
 with st.sidebar:
@@ -258,7 +303,7 @@ with st.sidebar:
     if 'selected_date' not in st.session_state or st.session_state.selected_date not in available_dates:
         st.session_state.selected_date = available_dates[0]
 
-    st.selectbox(
+    date_select = st.selectbox(
         "Select an available date",
         options=available_dates,
         key='selected_date',
@@ -303,10 +348,23 @@ with st.sidebar:
                 st.session_state.selected_scan_dt = random.choice(random_scan_times)
 
     def set_next_scan():
-        """Callback to advance to the next scan in the list."""
+        """Callback to advance to the next scan or the next available day."""
         current_index = scan_times.index(st.session_state.selected_scan_dt)
-        next_index = (current_index + 1) % len(scan_times)
-        st.session_state.selected_scan_dt = scan_times[next_index]
+        
+        if current_index == len(scan_times) - 1:
+            # Last scan of the day, find the next day with data
+            next_date = find_next_available_date(campaign, st.session_state.selected_date)
+            if next_date:
+                st.session_state.selected_year = next_date.year
+                st.session_state.selected_month = next_date.month
+                st.session_state.selected_date = next_date
+                # The scan time will be reset to the first available on the new day automatically
+            else:
+                st.toast("No more data found in the next year.")
+        else:
+            # Not the last scan, just go to the next one
+            next_index = current_index + 1
+            st.session_state.selected_scan_dt = scan_times[next_index]
 
     # Buttons to navigate scans
     col1, col2 = st.columns(2)
@@ -334,6 +392,10 @@ with st.sidebar:
         options=camera_configs.keys(),
         key='camera_choice_name'
     )
+    enable_aircraft_interface = st.toggle("Annotate advected ADS-B trails")
+    st.caption("This is slow the first time it's run for a day")
+
+    tlen = st.slider("Advection time (min)", min_value=0, max_value=2*60, value=15, step=15, disabled=not enable_aircraft_interface)
 
     # 6. Save Case
     st.divider()
@@ -344,27 +406,57 @@ with st.sidebar:
 
 
 # --- Main Display Area ---
-if st.session_state.get("selected_scan_dt"):
+if st.session_state.get("selected_scan_dt") and st.session_state.get("camera_choice_name"):
     selected_scan_dt_from_state = st.session_state.selected_scan_dt
     camera_configs = get_camera_configs()
 
-    with st.spinner(f"Generating plot for {selected_scan_dt_from_state.strftime('%H:%M:%S')} UTC..."):
+    # Create a placeholder that will be updated with the final plot.
+    plot_placeholder = st.empty()
+
+    # Show the initial, clean camera view in the placeholder.
+    with plot_placeholder.container():
+        initial_cam = get_placeholder_camera()
+        initial_cam.show(selected_scan_dt_from_state)
+        img = initial_cam.to_image_array()
+        st.image(img, width=500)
+
+    selected_camera_config = camera_configs[st.session_state.camera_choice_name]
+
+    with st.spinner(f"Generating final plot for {selected_scan_dt_from_state.strftime('%H:%M:%S')} UTC..."): # This spinner appears below the initial plot
         try:
             radar = get_radar(campaign)
             
             # Create the interface object
-            cri = RadarInterface(radar, camera_configs[st.session_state.camera_choice_name])
-            
-            # Use the show method from radar_interface.py
-            ax = cri.show(selected_scan_dt_from_state, var='DBZ')
-            
+            if enable_aircraft_interface:
+                # Get the cached aircraft interface to reuse its loaded flight data
+                cai = get_aircraft_interface()
+
+                # Create a new RadarInterface with the currently selected camera.
+                # This is relatively cheap to create and ensures the correct camera is used.
+                cri = RadarInterface(radar, selected_camera_config)
+
+                # Update the instrument that the AircraftInterface wraps.
+                # This is what you meant by "replace the aircraftinterface.camera property"
+                cai.camera = cri
+
+                # Now, when cai.show() is called, it will use the correct, up-to-date
+                # camera and radar interface, but its internal fleet object
+                # will persist, avoiding re-loading data for the same day.
+                ax = cai.show(selected_scan_dt_from_state, color_icao=True, trail_kwargs=dict(plot_kwargs=dict(plotting_method='intersect_plot'), label_acft=True), tlen=tlen*60)
+                ax[-1].legend()
+
+            else:
+                cri = RadarInterface(radar, selected_camera_config)
+                # Use the show method from radar_interface.py
+                ax = cri.show(selected_scan_dt_from_state, var='DBZ')
+
             fig = ax[-1].get_figure()
-            # Display in Streamlit
-            st.pyplot(fig)
+            # Display in Streamlit, replacing the initial view
+            plot_placeholder.pyplot(fig)
 
         except ValueError as e:
             st.error(f"Error during plot generation: {e}")
-            st.info("This often happens if the requested datetime does not exactly match a scan start time.")
+            # st.info("This often happens if the requested datetime does not exactly match a scan start time.")
         except FileNotFoundError as e:
             st.error(f"Data file not found: {e}")
             st.info("Please ensure the data paths in your configuration are correct and the files exist.")
