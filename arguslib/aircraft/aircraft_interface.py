@@ -5,6 +5,7 @@ from pathlib import Path
 from arguslib.misc.plotting import get_timestamp_from_ax
 
 
+
 from ..misc.geo import ft_to_km
 
 from ..instruments.instruments import PlottableInstrument
@@ -156,8 +157,9 @@ class AircraftInterface(PlottableInstrument):
         **kwargs,
     ):
         kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
-        
-        
+
+        plot_trails_kwargs = {"plotting_method": "intersect_plot"} if self.camera.__class__.__name__ == "RadarInterface" else {}
+
         if not self.fleet.loaded_file:
             print(f"Warning (AircraftInterface.plot_trails): No ADS-B data seems to have been loaded (fleet.loaded_file is None). "
                   f"Call 'load_flight_data()' on the AircraftInterface instance. No trails will be plotted for {dt}.")
