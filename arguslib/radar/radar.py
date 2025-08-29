@@ -203,8 +203,10 @@ class Radar(Instrument):
         ax.set_xlim(xlims)
         
         
-    def annotate_intersections(self, positions, times, dt, ax, **kwargs):
+    def annotate_intersections(self, positions, ages, dt, ax, **kwargs):
         """Calculates and annotates where a given path intersects the radar scan."""
+        
+        (dt_start, dt_end) = kwargs.pop('time_bounds', (None, None))
 
         if dt is None:
             raise ValueError("dt must be provided for radar positions")
@@ -217,37 +219,70 @@ class Radar(Instrument):
         azimuths = eads[:, 1]
         dists = eads[:, 2]
 
-        azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
+        pyart_radar = self.data_loader.get_pyart_radar(dt)
+        
+        
+        azimuth = pyart_radar.azimuth["data"][0]
         theta_seps = azimuths % 360 - azimuth % 360
         offsets = dists * np.sin(np.deg2rad(theta_seps))
         ys = dists * np.sin(np.deg2rad(elevs))
         xs = dists * np.cos(np.deg2rad(elevs)) * np.cos(np.deg2rad(theta_seps))
         if azimuth > 90 and azimuth < 270:
             xs = -xs
+        
+        if dt_start is not None:
+            # get the elev at the two dtimes
+            radar_elevs = pyart_radar.elevation["data"]
+            radar_times = pyart_radar.time["data"]
+            try:
+                start_elev = np.interp(dt_start.hour *60*60 +dt_start.minute*60 + dt_start.second + dt_start.microsecond*1e-6, radar_times, radar_elevs)
+            except:
+                start_elev = radar_elevs[np.argmin(radar_times)]
+            try:
+                end_elev = np.interp(dt_end.hour *60*60 +dt_end.minute*60 + dt_end.second + dt_end.microsecond*1e-6, radar_times, radar_elevs)
+            except:
+                end_elev = radar_elevs[np.argmax(radar_times)]
+            
+            min_elev = min(start_elev, end_elev)
+            max_elev = max(start_elev, end_elev)
+        else:
+            min_elev, max_elev = None, None
 
         # Use the interpolation helper to find the intersection points
         intersections = interpolate_to_intersection(
             offsets=offsets,
             coords_to_interpolate={'x': xs, 'y': ys},
-            data_to_interpolate={'time': times}
+            data_to_interpolate={'age': ages}
         )
 
         # Get the current x-axis limits from the plot before looping
         xlims = ax.get_xlim()
 
-        # Annotate the results on the plot
+        reverse_elevation = azimuth > 90 and azimuth < 270
+        elevs = np.array([np.rad2deg(np.arctan2(point['y'], point['x'])) for point in intersections])
+        elevs = 180-elevs if reverse_elevation else elevs
+
+        if min_elev is not None:
+            intersections_in_elev_range = [
+                point for point, elev in zip(intersections, elevs) if min_elev <= elev <= max_elev
+            ]
+        else:
+            intersections_in_elev_range = intersections
+
         valid_intersections = [
-            point for point in intersections if xlims[0] <= point['x'] <= xlims[1]
+            point for point in intersections_in_elev_range if xlims[0] <= point['x'] <= xlims[1]
         ]
 
+        
+        intersect_positions = []
         if valid_intersections:
             # Extract data for plotting (vectorized)
             plot_xs = np.array([point['x'] for point in valid_intersections])
             plot_ys = np.array([point['y'] for point in valid_intersections])
-            times_at_intersect = np.array([point['time'] for point in valid_intersections])
+            ages_at_intersect = np.array([point['age'] for point in valid_intersections])
 
             # Calculate labels
-            labels = [f"{time/60:.0f}min" for time in times_at_intersect]
+            labels = [f"{age/60:.0f}min" for age in ages_at_intersect]
 
             # Plot intersections (single scatter call)
             ax.scatter(plot_xs, plot_ys, **kwargs)
@@ -264,5 +299,17 @@ class Radar(Instrument):
                     ha='left',
                     va='bottom'
                 )
+            
+            elevs = np.rad2deg(np.arctan2(plot_ys, plot_xs))
+            elevs = 180 - elevs if reverse_elevation else elevs
+            
+            intersect_positions.append(self.position.ead_to_lla(
+                elevs,
+                np.ones_like(elevs)*azimuth,
+                np.sqrt(plot_xs**2 + plot_ys**2)
+            ))
+            
+            
         
         ax.set_xlim(xlims)
+        return intersect_positions

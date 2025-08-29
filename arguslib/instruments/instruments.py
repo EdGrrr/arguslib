@@ -211,7 +211,7 @@ class Position:
         # Calculate the new altitude
         new_alt = self.alt + alt_diff_km
         
-        return Position(new_lon, new_lat, new_alt)
+        return Position(new_lon.item(), new_lat.item(), new_alt.item())
 
 
     def xyz_to_lla(self, target_x, target_y, target_z):

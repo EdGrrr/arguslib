@@ -2,6 +2,8 @@ import numpy as np
 import datetime
 from pathlib import Path
 
+import pytz
+
 from arguslib.misc.plotting import get_timestamp_from_ax
 
 
@@ -136,6 +138,15 @@ class AircraftInterface(PlottableInstrument):
 
     def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
         ax = self.camera.show(dt, ax=ax, **kwargs)
+        
+        if self.camera.__class__.__name__ == "RadarInterface":
+            # If the underlying camera is a radar interface, we need to get the start and end time of the sweep
+            pyart_radar = self.camera.radar.data_loader.get_pyart_radar(dt)
+            self.start_time = datetime.datetime.fromtimestamp(pyart_radar.time["data"][0], tz=pytz.timezone("Europe/London")).replace(year=dt.year, month=dt.month, day=dt.day)
+            self.end_time = datetime.datetime.fromtimestamp(pyart_radar.time["data"][-1], tz=pytz.timezone("Europe/London")).replace(year=dt.year, month=dt.month, day=dt.day)
+            # these timestamps are coming out in UK time, need to convert to UTC
+            self.start_time = self.start_time.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            self.end_time = self.end_time.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
         self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao, **trail_kwargs)
         return ax
@@ -183,12 +194,70 @@ class AircraftInterface(PlottableInstrument):
             raise ValueError(f"Plotting timestamp {timestamp} does not match loaded date {loaded_date}")
 
         kwargs['winds'] = advection_winds
+        # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
+        plotting_method = plot_kwargs.pop('plotting_method', None)
+        if plotting_method is None:
+            plotting_method = plot_trails_kwargs.pop('plotting_method', None)
+        if plotting_method == "intersect_plot" and label_acft:
+            label_acft = False
+            label_acft_intersect = True
+
+        dict_positions = self.get_trail_positions(timestamp, icao_include=icao_include, **kwargs)
+        for acft, (positions, ages) in dict_positions.items():
+            # Make a copy of the kwargs to safely modify
+            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
+
+            acft_kwargs = {'color': f"#{acft}" if color_icao else 'red', 'label': f"{acft}" if label_acft else None}
+            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
+            # This is safe because 'plotting_method' and other special kwargs are removed.
+            self.camera.annotate_positions(
+                positions, dt, ax, **(acft_kwargs | trail_plot_args)
+            )
+            
+        if plotting_method == 'intersect_plot':
+            
+            # here we need to chunk up the radar, get trails at different times, and plot those.
+            intersect_chunk_size = 30 #s
+
+            times_midpoints = np.arange(self.start_time.timestamp()+intersect_chunk_size/2, self.end_time.timestamp(), intersect_chunk_size)
+            times_edges = np.arange(self.start_time.timestamp(), self.end_time.timestamp()+intersect_chunk_size, intersect_chunk_size)
+            for (t, (ti, tf)) in zip(times_midpoints, zip(times_edges[:-1], times_edges[1:])):
+                dict_positions = self.get_trail_positions(timestamp, icao_include=icao_include, **kwargs)
+                for acft, (positions, ages) in dict_positions.items():
+                    # Make a copy of the kwargs to safely modify
+                    trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
+
+                    acft_kwargs = {'color': f"#{acft}" if color_icao else 'red', 'label': f"{acft}" if label_acft_intersect else None}
+
+                    # Define kwargs specifically for the intersection markers
+                    intersect_kwargs = {'marker': 'X', 's': 25}
+                    # acft_kwargs.pop('label', None)
+                    self.camera.annotate_intersections(
+                        positions, ages, dt, ax, 
+                        time_bounds=(datetime.datetime.fromtimestamp(ti), datetime.datetime.fromtimestamp(tf)),  
+                        **(acft_kwargs | trail_plot_args | intersect_kwargs)
+                    )
+        
+        self.camera.annotate_positions(
+            positions[-1:],
+            timestamp,
+            ax,
+            color="r",
+            marker="o",
+            markersize=2,
+            **trail_plot_args,
+        )
+
+    def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)
         trail_alts_geom = self.fleet.get_data(timestamp, "alt_geom", tlen=kwargs["tlen"])
 
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
+        acfts = []
+        positions_lists = []
+        ages_lists = []
         for acft in trail_latlons.keys():
             if (
                 np.isnan(trail_latlons[acft])
@@ -200,50 +269,27 @@ class AircraftInterface(PlottableInstrument):
             lats = trail_latlons[acft][1]
             alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
             # Get the times array!
-            times = trail_latlons[acft][2] # Assuming get_trails returns this
+            ages = trail_latlons[acft][2] # Assuming get_trails returns this
 
             current_pos = self.fleet.aircraft[acft].pos.interpolate_position(timestamp)
-            current_time = timestamp # Or get a more precise time if available
+            
+            # differentce between the current timestamp and the last point in the get_trails...
+            
+            current_time = 0.0 # Or get a more precise time if available
             
             lons = np.append(lons, current_pos[0])
             lats = np.append(lats, current_pos[1])
             alts_km = np.append(alts_km, ft_to_km(current_pos[2]))
-            # Append the current time to the times array
-            times = np.append(times, current_time)
+            # Append the current time to the ages array
+            ages = np.append(ages, current_time)
 
             positions = [
                 Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_km)
             ]
-            # Make a copy of the kwargs to safely modify
-            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
-            
-            # Pop the special 'plotting_method' so it's not passed to the generic call
-            plotting_method = trail_plot_args.pop('plotting_method', None)
-
-            acft_kwargs = {'color': f"#{acft}" if color_icao else 'red', 'label': f"{acft}" if label_acft else None}
-            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
-            # This is safe because 'plotting_method' and other special kwargs are removed.
-            self.camera.annotate_positions(
-                positions, dt, ax, **(acft_kwargs | trail_plot_args)
-            )
-
-            # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
-            if plotting_method == 'intersect_plot':
-                # Define kwargs specifically for the intersection markers
-                intersect_kwargs = {'marker': 'X', 's': 25}
-                acft_kwargs.pop('label', None)
-                self.camera.annotate_intersections(
-                    positions, times, dt, ax,  **(acft_kwargs | trail_plot_args | intersect_kwargs)
-                )
-            self.camera.annotate_positions(
-                positions[-1:],
-                timestamp,
-                ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
-            )
+            acfts.append(acft)
+            positions_lists.append(positions)
+            ages_lists.append(ages)
+        return dict(zip(acfts, zip(positions_lists, ages_lists)))
 
     def to_image_array(self, time=True):
         """

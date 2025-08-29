@@ -237,8 +237,11 @@ class RadarInterface(PlottableInstrument):
         return ax_cam, ax_radar
 
     def annotate_intersections(
-        self, positions, times, dt, ax, **kwargs
+        self, positions, ages, dt, ax, **kwargs
     ):
-        return self.radar.annotate_intersections(positions, times, dt, ax[1], **kwargs)
+        intersect_positions = self.radar.annotate_intersections(positions, ages, dt, ax[1], **kwargs)
+        kwargs.pop("time_bounds", None)
+        kwargs['plotting_method'] = 'scatter'
+        self.camera.annotate_positions(intersect_positions, dt, ax=ax[0], **kwargs)
     
 
