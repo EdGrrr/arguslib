@@ -62,5 +62,6 @@ ai_on_ri_on_multicam.show(
     dt,
     tlen=30 * 60,
     color_icao=True,
-    trail_kwargs=dict(plot_kwargs=dict(plotting_method="intersect_plot")),
 )
+
+# %%
