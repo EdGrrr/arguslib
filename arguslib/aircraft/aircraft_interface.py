@@ -1,19 +1,24 @@
 import numpy as np
 import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytz
 
 from arguslib.misc.plotting import get_timestamp_from_ax
 
-
 from ..misc.geo import ft_to_km
+from ..protocols import DirectRenderable, ProvidesRadarScanTime
 
 from ..instruments.instruments import PlottableInstrument
 from ..camera.camera import Camera
 from ..camera.direct_camera import DirectCamera
 from ..instruments import Position
 from .fleet import Fleet
+
+if TYPE_CHECKING:
+    # This import is only for static type checkers, preventing runtime circular imports.
+    from arguslib.radar.radar_interface import RadarInterface
 
 
 def adjust_trail_positions(positions: list[Position], adjust_km):
@@ -153,22 +158,9 @@ class AircraftInterface(PlottableInstrument):
     def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
         ax = self.camera.show(dt, ax=ax, **kwargs)
 
-        if self.camera.__class__.__name__ == "RadarInterface":
-            # If the underlying camera is a radar interface, we need to get the start and end time of the sweep
-            pyart_radar = self.camera.radar.data_loader.get_pyart_radar(dt)
-            self.start_time = datetime.datetime.fromtimestamp(
-                pyart_radar.time["data"][0], tz=pytz.timezone("Europe/London")
-            ).replace(year=dt.year, month=dt.month, day=dt.day)
-            self.end_time = datetime.datetime.fromtimestamp(
-                pyart_radar.time["data"][-1], tz=pytz.timezone("Europe/London")
-            ).replace(year=dt.year, month=dt.month, day=dt.day)
-            # these timestamps are coming out in UK time, need to convert to UTC
-            self.start_time = self.start_time.astimezone(datetime.timezone.utc).replace(
-                tzinfo=None
-            )
-            self.end_time = self.end_time.astimezone(datetime.timezone.utc).replace(
-                tzinfo=None
-            )
+        # Use the protocol for type-safe, decoupled access to radar time bounds
+        if isinstance(self.camera, ProvidesRadarScanTime):
+            self.start_time, self.end_time = self.camera.get_scan_time_bounds(dt)
 
         self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao, **trail_kwargs)
         return ax
@@ -373,11 +365,11 @@ class AircraftInterface(PlottableInstrument):
         to_image_array() method. This is typically called after self.show()
         has prepared the image (including any trails).
         """
-        if isinstance(self.camera, DirectCamera):
+        if isinstance(self.camera, DirectRenderable):
             return self.camera.to_image_array(time=time)
         else:
             raise NotImplementedError(
-                "to_image_array is only available when the underlying camera is a DirectCamera."
+                "to_image_array is only available when the underlying instrument is DirectRenderable."
             )
 
     @property
@@ -385,11 +377,11 @@ class AircraftInterface(PlottableInstrument):
         """
         If the underlying camera is a DirectCamera, this property accesses its image property.
         """
-        if isinstance(self.camera, DirectCamera):
+        if isinstance(self.camera, DirectRenderable):
             return self.camera.image
         else:
             raise NotImplementedError(
-                "image property is only available when the underlying camera is a DirectCamera."
+                "image property is only available when the underlying instrument is DirectRenderable."
             )
 
 

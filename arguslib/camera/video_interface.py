@@ -10,6 +10,7 @@ from ..instruments.instruments import PlottableInstrument, Position
 from ..radar.radar_overlay_interface import (
     RadarOverlayInterface,
 )  # Allow RadarOverlayInterface
+from ..protocols import DirectRenderable
 
 
 class VideoInterface(PlottableInstrument):
@@ -21,53 +22,25 @@ class VideoInterface(PlottableInstrument):
     def __init__(self, instrument: PlottableInstrument):
         """
         Args:
-            instrument: A PlottableInstrument that behaves like a DirectCamera.
-                        It must implement show(dt, ax=None, ...), to_image_array(),
-                        and annotate_positions(..., ax=None, ...).
-                        Typically DirectCamera, AircraftInterface (wrapping DirectCamera),
-                        or RadarOverlayInterface (wrapping DirectCamera).
+            instrument: An instrument that conforms to the `DirectRenderable` protocol.
+                        This includes `DirectCamera` and wrappers like `AircraftInterface`
+                        or `RadarOverlayInterface` when they contain a `DirectCamera`.
         """
-        if isinstance(instrument, DirectCamera):
-            self.direct_camera_delegate = instrument
-            attrs_source = instrument
-        elif isinstance(instrument, AircraftInterface):
-            if not (
-                hasattr(instrument, "to_image_array")
-                and callable(getattr(instrument, "to_image_array"))
-            ):
-                raise TypeError(
-                    "If AircraftInterface is passed to VideoInterface, "
-                    "it must support to_image_array (i.e., its underlying camera must be a DirectCamera)."
-                )
-            self.direct_camera_delegate = instrument
-            attrs_source = instrument.camera  # Get attrs from the base camera
-        elif isinstance(instrument, RadarOverlayInterface):
-            if not (
-                hasattr(instrument, "to_image_array")
-                and callable(getattr(instrument, "to_image_array"))
-            ):
-                raise TypeError(
-                    "If RadarOverlayInterface is passed to VideoInterface, "
-                    "it must support to_image_array (i.e., its target_instrument must be a DirectCamera or wrap one)."
-                )
-            self.direct_camera_delegate = instrument
-            attrs_source = (
-                instrument.target_instrument
-            )  # Get attrs from the base target
-        else:
-            if not (
-                hasattr(instrument, "show")
-                and callable(getattr(instrument, "show"))
-                and hasattr(instrument, "to_image_array")
-                and callable(getattr(instrument, "to_image_array"))
-                and hasattr(instrument, "annotate_positions")
-                and callable(getattr(instrument, "annotate_positions"))
-            ):
-                raise TypeError(
-                    f"Instrument passed to VideoInterface must behave like a DirectCamera. Got {type(instrument)}"
-                )
-            self.direct_camera_delegate = instrument
-            attrs_source = instrument
+        if not isinstance(instrument, DirectRenderable):
+            raise TypeError(
+                f"Instrument of type {type(instrument).__name__} does not conform to the "
+                "DirectRenderable protocol. It must have show(), annotate_positions(), "
+                "and to_image_array() methods suitable for direct image rendering."
+            )
+
+        self.direct_camera_delegate = instrument
+
+        # Try to find the original base instrument to get the core attributes
+        attrs_source = instrument
+        if isinstance(instrument, AircraftInterface):
+            attrs_source = instrument.camera
+        if isinstance(attrs_source, RadarOverlayInterface):
+            attrs_source = attrs_source.target_instrument
 
         super().__init__(**getattr(attrs_source, "attrs", {}))
 

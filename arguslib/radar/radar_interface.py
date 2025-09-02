@@ -2,12 +2,13 @@
 Provides an interface for visualizing radar data alongside a plottable instrument like a camera.
 """
 
+import datetime
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
-import datetime
 import numpy as np
 
 from arguslib.instruments.instruments import PlottableInstrument
+from arguslib.protocols import ProvidesRadarScanTime
 
 from .radar import Radar
 from ..camera.camera import Camera
@@ -16,7 +17,7 @@ from ..misc.plotting import TimestampedFigure
 from .radar_overlay_interface import RadarOverlayInterface
 
 
-class RadarInterface(PlottableInstrument):
+class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
     """Combines a radar and a plottable instrument (e.g., Camera) for synchronized visualization.
 
     This class facilitates the creation of plots that show a camera's view
@@ -59,6 +60,19 @@ class RadarInterface(PlottableInstrument):
         return self._overlay_interface.show(
             dt, ax=ax, allow_timestamp_updates=False, **kwargs
         )
+
+    def get_scan_time_bounds(
+        self, dt: datetime.datetime
+    ) -> tuple[datetime.datetime, datetime.datetime]:
+        """
+        Returns the UTC start and end time of the radar scan corresponding to dt.
+        This method makes the class conform to the ProvidesRadarScanTime protocol.
+        """
+        pyart_radar = self.radar.data_loader.get_pyart_radar(dt)
+        start_time_utc = datetime_from_radar(pyart_radar)
+        duration_seconds = pyart_radar.time["data"][-1] - pyart_radar.time["data"][0]
+        end_time_utc = start_time_utc + datetime.timedelta(seconds=duration_seconds)
+        return start_time_utc, end_time_utc
 
     def show(
         self,
