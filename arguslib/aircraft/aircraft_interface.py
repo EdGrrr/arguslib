@@ -97,21 +97,14 @@ class AircraftInterface(PlottableInstrument):
         """
 
         if adsb_data_dir is None:
-            # load it from config
-            config_paths = [
-                Path("~/.config/arguslib/adsb_path.txt").expanduser(),
-                Path("~/.arguslib/adsb_path.txt").expanduser(),
-                Path("/etc/arguslib/adsb_path.txt"),
-            ]
-            for config_file in config_paths:
-                if not config_file.exists():
-                    continue
-                with open(config_file, "r") as f:
-                    adsb_data_dir = f.read().strip()
-                break
+            from arguslib.config import load_path_from_config
 
-        if adsb_data_dir is None:
-            raise FileNotFoundError("ADS-B data directory not found.")
+            try:
+                adsb_data_dir = load_path_from_config("adsb_path.txt")
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    "ADS-B data directory not specified and 'adsb_path.txt' not found."
+                )
 
         if isinstance(date_or_dt, datetime.datetime):
             date_to_load = date_or_dt.date()

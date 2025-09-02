@@ -69,28 +69,9 @@ class Camera(Instrument):
     def from_config(
         cls, campaign, camstr, **kwargs
     ):  # TODO: make from_config a method of Instrument...?
-        import yaml
+        from arguslib.config import load_config
 
-        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml, then /etc/arguslib/cameras.yml
-        # read from all that exists
-        config_paths = [
-            Path("~/.config/arguslib/cameras.yml").expanduser(),
-            Path("~/.arguslib/cameras.yml").expanduser(),
-            Path("/etc/arguslib/cameras.yml"),
-        ]
-        configs = []
-        for config_file in config_paths:
-            if not config_file.exists():
-                continue
-            with open(config_file, "r") as f:
-                configs.append(yaml.safe_load(f))
-
-        if not configs:
-            raise FileNotFoundError("No camera configuration file found")
-
-        cameras = {}
-        for config in configs[::-1]:
-            cameras.update(config)
+        cameras = load_config("cameras.yml")
 
         camera_config = cameras[campaign][camstr]
 

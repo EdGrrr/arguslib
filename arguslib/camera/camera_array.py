@@ -26,28 +26,9 @@ class CameraArray(PlottableInstrument):
     def from_config(
         cls, array_name
     ):  # TODO: make from_config a method of Instrument...?
-        import yaml
+        from arguslib.config import load_config
 
-        # look for a config file - try ~/.config/arguslib/cameras.yml, then ~/.arguslib/cameras.yml, then /etc/arguslib/cameras.yml
-        # read from all that exists
-        config_paths = [
-            Path("~/.config/arguslib/camera_arrays.yml").expanduser(),
-            Path("~/.arguslib/camera_arrays.yml").expanduser(),
-            Path("/etc/arguslib/camera_arrays.yml"),
-        ]
-        configs = []
-        for config_file in config_paths:
-            if not config_file.exists():
-                continue
-            with open(config_file, "r") as f:
-                configs.append(yaml.safe_load(f))
-
-        if not configs:
-            raise FileNotFoundError("No camera configuration file found")
-
-        camera_arrays = {}
-        for config in configs[::-1]:
-            camera_arrays.update(config)
+        camera_arrays = load_config("camera_arrays.yml")
 
         array_config = camera_arrays[array_name]
 
