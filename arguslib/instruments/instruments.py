@@ -26,7 +26,6 @@ def xyz_to_ead(target_x, target_y, target_z):
     return np.array([target_elevation, target_azimuth, target_distance])
 
 
-
 def rotation_matrix_i_to_g(elevation, azimuth, roll):
     """
     Creates a rotation matrix to transform coordinates from the instrument's
@@ -54,12 +53,14 @@ def rotation_matrix_i_to_g(elevation, azimuth, roll):
     # General case for non-vertical cameras
     if np.abs(el_rad - np.pi / 2) > 1e-6:
         # Define the instrument's optical axis (the local z-axis)
-        i_z = np.array([
-            np.cos(el_rad) * np.sin(az_rad),
-            np.cos(el_rad) * np.cos(az_rad),
-            np.sin(el_rad)
-        ])
-        
+        i_z = np.array(
+            [
+                np.cos(el_rad) * np.sin(az_rad),
+                np.cos(el_rad) * np.cos(az_rad),
+                np.sin(el_rad),
+            ]
+        )
+
         # Define the instrument's "right" vector (local x-axis) before roll
         g_up = np.array([0, 0, 1])
         i_x_preroll = np.cross(i_z, g_up)
@@ -70,16 +71,16 @@ def rotation_matrix_i_to_g(elevation, azimuth, roll):
 
         # Define the instrument's "up" vector (local y-axis) before roll
         i_y_preroll = np.cross(i_z, i_x_preroll)
-    
+
     # Special case for a vertically-pointing (zenith) camera
     else:
         # The optical axis is straight up.
         i_z = np.array([0, 0, 1])
-        
+
         # The pre-roll orientation is fixed to North-up, East-right, IGNORING azimuth.
         i_x_preroll = np.array([1, 0, 0])  # East
         i_y_preroll = np.array([0, 1, 0])  # North
-    
+
     # Apply roll to the pre-roll basis vectors to get the final orientation
     cos_r = np.cos(roll_rad)
     sin_r = np.sin(roll_rad)
@@ -126,8 +127,11 @@ class Position:
         Vectorized to handle a list of target positions.
         """
         # Check if input is a list or a single object
-        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
-        
+        is_list = (
+            isinstance(target_position, (list, tuple, np.ndarray))
+            and len(target_position) > 0
+        )
+
         targets = target_position if is_list else [target_position]
 
         # Extract target coordinates into numpy arrays
@@ -138,17 +142,17 @@ class Position:
         # Perform vectorized calculations
         distance = haversine(self.lon, self.lat, target_lons, target_lats)
         alt_diff = target_alts - self.alt
-        
+
         # Avoid division by zero for elevation calculation when distance is zero
         distance_safe = np.where(distance == 0, 1e-9, distance)
-        
+
         target_distance = np.sqrt(distance**2 + alt_diff**2)
         target_elevation = np.rad2deg(np.arctan2(alt_diff, distance_safe))
         target_azimuth = bearing(self.lon, self.lat, target_lons, target_lats)
-        
+
         # Stack results into an (N, 3) array
         result = np.vstack([target_elevation, target_azimuth, target_distance]).T
-        
+
         # Return a single array or the full array to match input type
         return result[0] if not is_list else result
 
@@ -163,10 +167,13 @@ class Position:
         Vectorized to handle a list of target positions.
         """
         # Check if input is a list or a single object
-        is_list = isinstance(target_position, (list, tuple, np.ndarray)) and len(target_position) > 0
-        
+        is_list = (
+            isinstance(target_position, (list, tuple, np.ndarray))
+            and len(target_position) > 0
+        )
+
         targets = target_position if is_list else [target_position]
-    
+
         # Extract target coordinates into numpy arrays
         target_lons = np.array([p.lon for p in targets])
         target_lats = np.array([p.lat for p in targets])
@@ -176,13 +183,13 @@ class Position:
         distance = haversine(self.lon, self.lat, target_lons, target_lats)
         target_z = target_alts - self.alt
         target_bearing = bearing(self.lon, self.lat, target_lons, target_lats)
-        
+
         target_x = distance * np.sin(np.deg2rad(target_bearing))
         target_y = distance * np.cos(np.deg2rad(target_bearing))
 
         # Stack results into an (N, 3) array
         result = np.vstack([target_x, target_y, target_z]).T
-        
+
         # Return a single array or the full array to match input type
         return result[0] if not is_list else result
 
@@ -201,18 +208,19 @@ class Position:
 
         # Calculate the horizontal distance traveled over the Earth's surface
         horiz_dist_km = target_distance * np.cos(np.deg2rad(target_elevation))
-        
+
         # Calculate the change in altitude
         alt_diff_km = target_distance * np.sin(np.deg2rad(target_elevation))
-        
+
         # Calculate the new lat/lon using the accurate spherical model
-        new_lon, new_lat = destination_point(self.lon, self.lat, target_azimuth, horiz_dist_km)
-        
+        new_lon, new_lat = destination_point(
+            self.lon, self.lat, target_azimuth, horiz_dist_km
+        )
+
         # Calculate the new altitude
         new_alt = self.alt + alt_diff_km
-        
-        return Position(new_lon.item(), new_lat.item(), new_alt.item())
 
+        return Position(new_lon.item(), new_lat.item(), new_alt.item())
 
     def xyz_to_lla(self, target_x, target_y, target_z):
         # Assume Earth is locally flat, but also spherical
@@ -334,8 +342,8 @@ class Instrument(PlottableInstrument):
         ixyz = inv_R @ gxyz
         # convert to instrument-relative ead coordinates
         instrument_elevation, instrument_azimuth, dist = xyz_to_ead(*ixyz)
-        
-        # Convert elevation from 'angle from instrument horizon' 
+
+        # Convert elevation from 'angle from instrument horizon'
         # to 'angle from optical axis' (90 - elev)
         instrument_elevation = 90 - instrument_elevation
 

@@ -1,6 +1,7 @@
 """
 Defines the Camera instrument, providing methods for geolocation and visualization of all-sky or perspective camera imagery.
 """
+
 # %%
 import datetime
 from .calibration import PerspectiveProjection, Projection, unit
@@ -10,7 +11,7 @@ from ..instruments.instruments import (
     default_calibration_file,
     ead_to_xyz,
     xyz_to_ead,
-    rotation_matrix_i_to_g
+    rotation_matrix_i_to_g,
 )
 from ..misc.geo import haversine, destination_point
 from ..misc.plotting import (
@@ -129,7 +130,7 @@ class Camera(Instrument):
         """
         # This call is now vectorized
         ieads = self.target_iead(target_position)
-        
+
         # Handle single vs. multiple positions
         if ieads.ndim == 1:
             return self.iead_to_pix(*ieads)
@@ -138,16 +139,15 @@ class Camera(Instrument):
             # iead_to_pix is vector-ready
             return self.iead_to_pix(elevations, azimuths, dists)
 
-
     def pix_to_iead(self, pix_x, pix_y, distance=None, altitude=None):
         xyz = self.intrinsic.image_to_view(
             [pix_x * self.scale_factor, pix_y * self.scale_factor]
         )
-        
+
         uv = unit(xyz)
         if distance is None and altitude is None:
             raise Exception("Must specify either distance or altitude")
-        
+
         # This inner function calculates the EAD and performs the critical elevation conversion
         def calculate_and_convert_ead(dist):
             final_xyz = uv * dist
@@ -175,9 +175,11 @@ class Camera(Instrument):
         # This function is naturally vectorized because it relies on NumPy operations.
         # Convert elevation: angle_from_xy_plane = 90 degrees - angle_from_z_axis
         elevation_for_xyz = 90.0 - elevation
-        
-        view_vector = ead_to_xyz(elevation_for_xyz, azimuth, dist).T # ead_to_xyz seems to transpose them...
-        
+
+        view_vector = ead_to_xyz(
+            elevation_for_xyz, azimuth, dist
+        ).T  # ead_to_xyz seems to transpose them...
+
         # Transpose view_vector to (N, 3) before passing to the projection function
         return self.intrinsic.view_to_image(view_vector) / self.scale_factor
 
@@ -257,17 +259,21 @@ class Camera(Instrument):
         if ax is None:
             # If no axis is provided, make_camera_axes will create one,
             # potentially polar, and set theta_offset/direction.
-            ax = make_camera_axes(self, theta_behaviour=theta_behaviour, dt=dt, **kwargs)
+            ax = make_camera_axes(
+                self, theta_behaviour=theta_behaviour, dt=dt, **kwargs
+            )
         else:
             # If an axis is provided, check if it's polar and apply theta settings.
-            if hasattr(ax, "set_theta_zero_location"): # It's a polar axis
+            if hasattr(ax, "set_theta_zero_location"):  # It's a polar axis
                 if theta_behaviour == "pixels":
                     ax.set_theta_offset(np.deg2rad(self.rotation[-1]))
                     # total_rotation_deg = self.rotation[1] + self.rotation[2]
                     # ax.set_theta_offset(np.deg2rad(total_rotation_deg))
                     # Ensure default direction if not specified or handled by lr_flip logic later
-                    if not hasattr(ax, '_theta_direction_set_by_camera_show'): # Avoid double-setting
-                        ax.set_theta_direction(1) # Example default, adjust if needed
+                    if not hasattr(
+                        ax, "_theta_direction_set_by_camera_show"
+                    ):  # Avoid double-setting
+                        ax.set_theta_direction(1)  # Example default, adjust if needed
                         ax._theta_direction_set_by_camera_show = True
                 elif theta_behaviour == "bearing":
                     ax.set_theta_offset(np.pi / 2)
@@ -291,7 +297,6 @@ class Camera(Instrument):
 
         ax.grid(False)
 
-        
         plot_range_rings(self, dt, ax=ax)
 
         try:
@@ -332,14 +337,16 @@ class Camera(Instrument):
         # This is safe for lists, tuples, and numpy arrays.
         target_lons = np.array([p.lon for p in positions])
         target_lats = np.array([p.lat for p in positions])
-        
-        dists = haversine(self.position.lon, self.position.lat, target_lons, target_lats)
+
+        dists = haversine(
+            self.position.lon, self.position.lat, target_lons, target_lats
+        )
         ieads = self.target_iead(positions)
 
         if ieads.ndim == 1:
             ieads = ieads.reshape(1, -1)
             dists = np.array([dists]) if np.isscalar(dists) else dists
-            
+
         # --- Vectorized Pixel Conversion ---
         pl_track = self.iead_to_pix(ieads[:, 0], ieads[:, 1], ieads[:, 2])
 
@@ -352,7 +359,7 @@ class Camera(Instrument):
             return ax
 
         filtered_track = pl_track[plot_filter]
-        
+
         if hasattr(ax, "set_xlim"):
             xlim = ax.get_xlim()
             ylim = ax.get_ylim()
@@ -360,22 +367,30 @@ class Camera(Instrument):
         if plotting_method is None:
             ax.plot(filtered_track[:, 0], filtered_track[:, 1], *args, **kwargs)
         else:
-            getattr(ax, plotting_method)(filtered_track[:, 0], filtered_track[:, 1], *args, **kwargs)
+            getattr(ax, plotting_method)(
+                filtered_track[:, 0], filtered_track[:, 1], *args, **kwargs
+            )
 
         if hasattr(ax, "set_xlim"):
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
-            
+
         return ax
-    
+
     def distance_calibration_img(self, height_km=10):
-        X, Y = np.meshgrid(np.arange(self.image_size_px[0]), np.arange(self.image_size_px[1]))
+        X, Y = np.meshgrid(
+            np.arange(self.image_size_px[0]), np.arange(self.image_size_px[1])
+        )
         grid = np.full_like(X, np.nan)
-        
+
         for xx in trange(self.image_size_px[0]):
             for yy in range(self.image_size_px[1]):
-                elev, _, dist = self.pix_to_iead(X[xx, yy].item(), Y[xx, yy].item(), altitude=height_km)
+                elev, _, dist = self.pix_to_iead(
+                    X[xx, yy].item(), Y[xx, yy].item(), altitude=height_km
+                )
                 dist_in_plane = dist * np.tan(np.deg2rad(elev))
                 grid[xx, yy] = dist_in_plane
         return grid
+
+
 # %%

@@ -3,10 +3,11 @@ import numpy as np
 from typing import List, Dict, Any
 import datetime as dt
 
+
 def interpolate_to_intersection(
     offsets: np.ndarray,
     coords_to_interpolate: Dict[str, np.ndarray],
-    data_to_interpolate: Dict[str, np.ndarray]
+    data_to_interpolate: Dict[str, np.ndarray],
 ) -> List[Dict[str, Any]]:
     """
     Finds where a path crosses a plane (where offset is zero) and linearly
@@ -41,7 +42,7 @@ def interpolate_to_intersection(
         # Calculate interpolation fraction 't' where the offset is 0
         # t = 0 corresponds to point1, t = 1 corresponds to point2
         t = offset1 / (offset1 - offset2)
-        
+
         # We only want to interpolate if the crossing is within the segment
         if not (0 <= t <= 1):
             continue
@@ -69,8 +70,14 @@ def interpolate_to_intersection(
             if isinstance(val1, dt.datetime) and isinstance(val2, dt.datetime):
                 val1_ts, val2_ts = val1.timestamp(), val2.timestamp()
                 interpolated_ts = val1_ts + t * (val2_ts - val1_ts)
-                tz = getattr(val1, 'tzinfo', None) or getattr(val2, 'tzinfo', None) or dt.timezone.utc
-                intersection_point[key] = dt.datetime.fromtimestamp(interpolated_ts, tz=tz)
+                tz = (
+                    getattr(val1, "tzinfo", None)
+                    or getattr(val2, "tzinfo", None)
+                    or dt.timezone.utc
+                )
+                intersection_point[key] = dt.datetime.fromtimestamp(
+                    interpolated_ts, tz=tz
+                )
             # Handle numeric types
             elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
                 intersection_point[key] = val1 + t * (val2 - val1)
