@@ -28,11 +28,14 @@ try:
     from arguslib.camera.undistorted_camera import UndistortedCamera
     from arguslib.radar.radar import Radar
     from arguslib.radar.radar_interface import RadarInterface
+
     # We need the locator to find scan times
     from arguslib.radar.locator import RadarData, initialise_locator
 except ImportError as e:
     st.error(f"Failed to import arguslib modules: {e}")
-    st.info("Please ensure that the 'arguslib' directory is in your Python path or in the same directory as this Streamlit app.")
+    st.info(
+        "Please ensure that the 'arguslib' directory is in your Python path or in the same directory as this Streamlit app."
+    )
     st.stop()
 
 
@@ -45,7 +48,9 @@ def get_radar(campaign_name):
     try:
         return Radar.from_config(campaign_name)
     except FileNotFoundError as e:
-        st.error(f"Could not find radar configuration for '{campaign_name}'. Please check your config files.")
+        st.error(
+            f"Could not find radar configuration for '{campaign_name}'. Please check your config files."
+        )
         st.stop()
     except Exception as e:
         st.error(f"An error occurred while loading the radar: {e}")
@@ -71,6 +76,7 @@ def get_aircraft_interface():
     placeholder_cam = UndistortedCamera.from_config("COBALT", "3-7")
     return AutomaticADSBAircraftInterface(placeholder_cam)
 
+
 @st.cache_resource
 def get_camera_configs():
     """Defines and caches available camera configurations."""
@@ -86,7 +92,7 @@ def get_camera_configs():
                 UndistortedCamera.from_config("COBALT", "5-3"),
                 UndistortedCamera.from_config("COBALT", "5-4"),
             ],
-            (3, 3)
+            (3, 3),
         ),
         # Add other CameraArray or single Camera objects here
     }
@@ -103,14 +109,20 @@ def find_active_year_months(campaign):
             try:
                 # A quick search for any file in the month
                 files = locator.search(
-                    "ARGUS", "rhi", campaign=campaign,
-                    year=year, mon=month, day="**", hour="**"
+                    "ARGUS",
+                    "rhi",
+                    campaign=campaign,
+                    year=year,
+                    mon=month,
+                    day="**",
+                    hour="**",
                 )
                 if files:
                     active_year_months[year].append(month)
             except Exception:
                 continue
     return active_year_months
+
 
 @st.cache_data
 def find_available_dates_in_month(campaign, year, month):
@@ -123,8 +135,13 @@ def find_available_dates_in_month(campaign, year, month):
         # This is the potentially slow part, but caching helps.
         try:
             files = locator.search(
-                "ARGUS", "rhi", campaign=campaign,
-                year=year, mon=month, day=day, hour="**"
+                "ARGUS",
+                "rhi",
+                campaign=campaign,
+                year=year,
+                mon=month,
+                day=day,
+                hour="**",
             )
             if files:
                 available_dates.append(dt.date(year, month, day))
@@ -132,6 +149,7 @@ def find_available_dates_in_month(campaign, year, month):
             # Ignore errors during search for a single day
             continue
     return available_dates
+
 
 @st.cache_data
 def find_next_available_date(campaign, start_date):
@@ -142,35 +160,50 @@ def find_next_available_date(campaign, start_date):
     for _ in range(365):
         try:
             files = locator.search(
-                "ARGUS", "rhi", campaign=campaign,
-                year=current_date.year, mon=current_date.month, day=current_date.day, hour="**"
+                "ARGUS",
+                "rhi",
+                campaign=campaign,
+                year=current_date.year,
+                mon=current_date.month,
+                day=current_date.day,
+                hour="**",
             )
             if files:
                 return current_date
         except Exception:
-            pass # Ignore errors and continue to the next day
+            pass  # Ignore errors and continue to the next day
         current_date += dt.timedelta(days=1)
     return None
+
 
 # This function is not cached with the main resource cache because it depends
 # on the user-selected inputs.
 @st.cache_data
-def get_available_scans_for_day(campaign, scan_type, selected_date, start_time, end_time):
+def get_available_scans_for_day(
+    campaign, scan_type, selected_date, start_time, end_time
+):
     """
     Finds all available radar scan start times for a given day within a specified
     UTC time window.
     """
     if not selected_date:
         return []
-        
-    st.info(f"Searching for {scan_type} scans on {selected_date.strftime('%Y-%m-%d')}...")
-    
+
+    st.info(
+        f"Searching for {scan_type} scans on {selected_date.strftime('%Y-%m-%d')}..."
+    )
+
     locator = initialise_locator()
-    
+
     try:
         all_day_files = locator.search(
-            "ARGUS", scan_type, campaign=campaign,
-            year=selected_date.year, mon=selected_date.month, day=selected_date.day, hour="**",
+            "ARGUS",
+            scan_type,
+            campaign=campaign,
+            year=selected_date.year,
+            mon=selected_date.month,
+            day=selected_date.day,
+            hour="**",
         )
     except Exception as e:
         st.warning(f"Could not search for files: {e}")
@@ -187,19 +220,21 @@ def get_available_scans_for_day(campaign, scan_type, selected_date, start_time, 
     scan_times = []
     for f_path in sorted(all_day_files):
         filename_base = os.path.basename(f_path)
-        match = re.search(r'(\d{4}\d{2}\d{2}-\d{2}\d{2}\d{2})', filename_base)
+        match = re.search(r"(\d{4}\d{2}\d{2}-\d{2}\d{2}\d{2})", filename_base)
         if match:
             try:
                 # The file time is already in UTC, and it's "naive"
                 scan_dt_utc = dt.datetime.strptime(match.group(1), "%Y%m%d-%H%M%S")
-                
+
                 # Check if the scan is within our UTC time bounds
                 if utc_start <= scan_dt_utc <= utc_end:
                     scan_times.append(scan_dt_utc)
             except ValueError:
                 continue
 
-    st.success(f"Found {len(scan_times)} scans between {start_time.strftime('%H:%M')} and {end_time.strftime('%H:%M')} UTC.")
+    st.success(
+        f"Found {len(scan_times)} scans between {start_time.strftime('%H:%M')} and {end_time.strftime('%H:%M')} UTC."
+    )
     return scan_times
 
 
@@ -208,7 +243,7 @@ def save_case(save_path, selected_dt, camera_name):
     case_data = {
         "timestamp": [selected_dt.isoformat()],
         "camera_config": [camera_name],
-        "saved_at": [dt.datetime.now().isoformat()]
+        "saved_at": [dt.datetime.now().isoformat()],
     }
     df_new = pd.DataFrame(case_data)
 
@@ -228,7 +263,7 @@ def save_case(save_path, selected_dt, camera_name):
 DEFAULT_YEAR = 2025
 DEFAULT_MONTH = 5
 DEFAULT_DAY = 1
-DEFAULT_SCAN_TIME_STR = "07:25:06" # H:M:S format
+DEFAULT_SCAN_TIME_STR = "07:25:06"  # H:M:S format
 
 st.set_page_config(layout="wide")
 st.title("🛰️ COBALT Radar & Camera Interface Explorer")
@@ -242,9 +277,9 @@ with st.sidebar:
 
     # 2. New Date Selection Method
     st.subheader("Date Selection")
-    
+
     # --- One-time initialization from URL params or defaults ---
-    if 'init_done' not in st.session_state:
+    if "init_done" not in st.session_state:
         st.session_state.init_done = True
         params = st.query_params
         try:
@@ -252,62 +287,79 @@ with st.sidebar:
             month = int(params.get("month", DEFAULT_MONTH))
             day = int(params.get("day", DEFAULT_DAY))
             scan_str = params.get("scan", DEFAULT_SCAN_TIME_STR)
-            
+
             # Store the desired initial state. We will validate it against available data later.
             st.session_state.selected_year = year
             st.session_state.selected_month = month
             st.session_state.selected_date = dt.date(year, month, day)
             st.session_state.selected_scan_dt = dt.datetime.combine(
-                dt.date(year, month, day), 
-                dt.time.fromisoformat(scan_str)
+                dt.date(year, month, day), dt.time.fromisoformat(scan_str)
             )
         except (ValueError, TypeError):
             # If params are bad, clear any potentially bad state
-            for key in ['selected_year', 'selected_month', 'selected_date', 'selected_scan_dt']:
+            for key in [
+                "selected_year",
+                "selected_month",
+                "selected_date",
+                "selected_scan_dt",
+            ]:
                 if key in st.session_state:
                     del st.session_state[key]
-    
+
     with st.spinner("Finding available years and months..."):
         active_year_months = find_active_year_months(campaign)
 
     if not active_year_months:
         st.error("No data found for this campaign in the last 10 years.")
         st.stop()
-    
+
     active_years = sorted(active_year_months.keys(), reverse=True)
 
     # --- Validate and Set Year, Month, Date, and Scan ---
     # Validate Year or set to default
-    if 'selected_year' not in st.session_state or st.session_state.selected_year not in active_years:
+    if (
+        "selected_year" not in st.session_state
+        or st.session_state.selected_year not in active_years
+    ):
         st.session_state.selected_year = active_years[0]
-    
+
     # Validate Month or set to default
     active_months_for_year = active_year_months[st.session_state.selected_year]
-    if 'selected_month' not in st.session_state or st.session_state.selected_month not in active_months_for_year:
+    if (
+        "selected_month" not in st.session_state
+        or st.session_state.selected_month not in active_months_for_year
+    ):
         st.session_state.selected_month = active_months_for_year[0]
 
     col_date1, col_date2 = st.columns(2)
     with col_date1:
-        st.selectbox("Year", active_years, key='selected_year')
+        st.selectbox("Year", active_years, key="selected_year")
     with col_date2:
-        st.selectbox("Month", active_months_for_year, key='selected_month')
+        st.selectbox("Month", active_months_for_year, key="selected_month")
 
     with st.spinner("Finding dates with data..."):
-        available_dates = find_available_dates_in_month(campaign, st.session_state.selected_year, st.session_state.selected_month)
+        available_dates = find_available_dates_in_month(
+            campaign, st.session_state.selected_year, st.session_state.selected_month
+        )
 
     if not available_dates:
-        st.warning("No data found for this month. Please select a different month/year.")
+        st.warning(
+            "No data found for this month. Please select a different month/year."
+        )
         st.stop()
-    
+
     # Validate Date or set to default
-    if 'selected_date' not in st.session_state or st.session_state.selected_date not in available_dates:
+    if (
+        "selected_date" not in st.session_state
+        or st.session_state.selected_date not in available_dates
+    ):
         st.session_state.selected_date = available_dates[0]
 
     date_select = st.selectbox(
         "Select an available date",
         options=available_dates,
-        key='selected_date',
-        format_func=lambda d: d.strftime("%Y-%m-%d") # Simplified date format
+        key="selected_date",
+        format_func=lambda d: d.strftime("%Y-%m-%d"),  # Simplified date format
     )
 
     # 3. Time bounds
@@ -318,17 +370,23 @@ with st.sidebar:
     with col_time2:
         end_time = st.time_input("End time", value=time(18, 0))
 
-
     # 4. Find and Select Scan Time
     st.subheader("Scan Selection")
-    scan_times = get_available_scans_for_day(campaign, "rhi", st.session_state.selected_date, start_time, end_time)
+    scan_times = get_available_scans_for_day(
+        campaign, "rhi", st.session_state.selected_date, start_time, end_time
+    )
 
     if not scan_times:
-        st.warning("No scans available for this date and time window. Please adjust the filters.")
+        st.warning(
+            "No scans available for this date and time window. Please adjust the filters."
+        )
         st.stop()
 
     # Validate Scan Time or set to default
-    if 'selected_scan_dt' not in st.session_state or st.session_state.selected_scan_dt not in scan_times:
+    if (
+        "selected_scan_dt" not in st.session_state
+        or st.session_state.selected_scan_dt not in scan_times
+    ):
         st.session_state.selected_scan_dt = scan_times[0]
 
     # --- Button Callbacks ---
@@ -336,10 +394,14 @@ with st.sidebar:
         """Callback to set a new random scan, date, month, and year."""
         random_year = random.choice(list(active_year_months.keys()))
         random_month = random.choice(active_year_months[random_year])
-        random_available_dates = find_available_dates_in_month(campaign, random_year, random_month)
+        random_available_dates = find_available_dates_in_month(
+            campaign, random_year, random_month
+        )
         if random_available_dates:
             random_date = random.choice(random_available_dates)
-            random_scan_times = get_available_scans_for_day(campaign, "rhi", random_date, start_time, end_time)
+            random_scan_times = get_available_scans_for_day(
+                campaign, "rhi", random_date, start_time, end_time
+            )
             if random_scan_times:
                 # This now works because it runs before the widgets are drawn
                 st.session_state.selected_year = random_year
@@ -350,10 +412,12 @@ with st.sidebar:
     def set_next_scan():
         """Callback to advance to the next scan or the next available day."""
         current_index = scan_times.index(st.session_state.selected_scan_dt)
-        
+
         if current_index == len(scan_times) - 1:
             # Last scan of the day, find the next day with data
-            next_date = find_next_available_date(campaign, st.session_state.selected_date)
+            next_date = find_next_available_date(
+                campaign, st.session_state.selected_date
+            )
             if next_date:
                 st.session_state.selected_year = next_date.year
                 st.session_state.selected_month = next_date.month
@@ -377,36 +441,49 @@ with st.sidebar:
     st.selectbox(
         "Select Scan Time (UTC)",
         options=scan_times,
-        key='selected_scan_dt',
-        format_func=lambda d: d.strftime("%H:%M:%S")
+        key="selected_scan_dt",
+        format_func=lambda d: d.strftime("%H:%M:%S"),
     )
 
     # 5. Select Camera
     st.subheader("Camera")
     camera_configs = get_camera_configs()
-    if 'camera_choice_name' not in st.session_state:
+    if "camera_choice_name" not in st.session_state:
         st.session_state.camera_choice_name = list(camera_configs.keys())[0]
 
     st.selectbox(
         "Select Camera Configuration",
         options=camera_configs.keys(),
-        key='camera_choice_name'
+        key="camera_choice_name",
     )
     enable_aircraft_interface = st.toggle("Annotate advected ADS-B trails")
     st.caption("This is slow the first time it's run for a day")
 
-    tlen = st.slider("Advection time (min)", min_value=0, max_value=2*60, value=15, step=15, disabled=not enable_aircraft_interface)
+    tlen = st.slider(
+        "Advection time (min)",
+        min_value=0,
+        max_value=2 * 60,
+        value=15,
+        step=15,
+        disabled=not enable_aircraft_interface,
+    )
 
     # 6. Save Case
     st.divider()
     st.header("Save Case")
     save_filename = st.text_input("Save file name", "good_cases.csv")
     if st.button("Save Current Case"):
-        save_case(save_filename, st.session_state.selected_scan_dt, st.session_state.camera_choice_name)
+        save_case(
+            save_filename,
+            st.session_state.selected_scan_dt,
+            st.session_state.camera_choice_name,
+        )
 
 
 # --- Main Display Area ---
-if st.session_state.get("selected_scan_dt") and st.session_state.get("camera_choice_name"):
+if st.session_state.get("selected_scan_dt") and st.session_state.get(
+    "camera_choice_name"
+):
     selected_scan_dt_from_state = st.session_state.selected_scan_dt
     camera_configs = get_camera_configs()
 
@@ -422,10 +499,12 @@ if st.session_state.get("selected_scan_dt") and st.session_state.get("camera_cho
 
     selected_camera_config = camera_configs[st.session_state.camera_choice_name]
 
-    with st.spinner(f"Generating final plot for {selected_scan_dt_from_state.strftime('%H:%M:%S')} UTC..."): # This spinner appears below the initial plot
+    with st.spinner(
+        f"Generating final plot for {selected_scan_dt_from_state.strftime('%H:%M:%S')} UTC..."
+    ):  # This spinner appears below the initial plot
         try:
             radar = get_radar(campaign)
-            
+
             # Create the interface object
             if enable_aircraft_interface:
                 # Get the cached aircraft interface to reuse its loaded flight data
@@ -442,13 +521,18 @@ if st.session_state.get("selected_scan_dt") and st.session_state.get("camera_cho
                 # Now, when cai.show() is called, it will use the correct, up-to-date
                 # camera and radar interface, but its internal fleet object
                 # will persist, avoiding re-loading data for the same day.
-                ax = cai.show(selected_scan_dt_from_state, color_icao=True, trail_kwargs=dict(plot_kwargs=dict(plotting_method='intersect_plot'), label_acft=True), tlen=tlen*60)
+                ax = cai.show(
+                    selected_scan_dt_from_state,
+                    color_icao=True,
+                    trail_kwargs=dict(label_acft=True),
+                    tlen=tlen * 60,
+                )
                 ax[-1].legend()
 
             else:
                 cri = RadarInterface(radar, selected_camera_config)
                 # Use the show method from radar_interface.py
-                ax = cri.show(selected_scan_dt_from_state, var='DBZ')
+                ax = cri.show(selected_scan_dt_from_state, var="DBZ")
 
             fig = ax[-1].get_figure()
             # Display in Streamlit, replacing the initial view
@@ -459,7 +543,9 @@ if st.session_state.get("selected_scan_dt") and st.session_state.get("camera_cho
             # st.info("This often happens if the requested datetime does not exactly match a scan start time.")
         except FileNotFoundError as e:
             st.error(f"Data file not found: {e}")
-            st.info("Please ensure the data paths in your configuration are correct and the files exist.")
+            st.info(
+                "Please ensure the data paths in your configuration are correct and the files exist."
+            )
         except Exception as e:
             st.error(f"An unexpected error occurred: {e}")
 
