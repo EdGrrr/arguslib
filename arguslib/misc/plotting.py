@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+
 class TimestampedFigure(Figure):
     def __init__(self, *args, **kwargs):
         timestamp = kwargs.pop("timestamp", None)
@@ -10,28 +11,34 @@ class TimestampedFigure(Figure):
             raise ValueError("Timestamped figures need a timestamp property.")
         self.timestamp = timestamp
         Figure.__init__(self, *args, **kwargs)
-        
+
+
 def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
     """
     Plots range rings on a camera image. Each ring is plotted in a separate
     call to ensure they are not connected.
     """
+
     # This helper function calculates a destination lat/lon using spherical geometry
     def calculate_destination_point(start_lon, start_lat, bearing_deg, distance_km):
         R = 6371.0  # Average Earth radius in km
-        
+
         lat1_rad = np.deg2rad(start_lat)
         lon1_rad = np.deg2rad(start_lon)
         bearing_rad = np.deg2rad(bearing_deg)
-        
+
         d_div_R = distance_km / R
-        
-        lat2_rad = np.arcsin(np.sin(lat1_rad) * np.cos(d_div_R) +
-                         np.cos(lat1_rad) * np.sin(d_div_R) * np.cos(bearing_rad))
-        
-        lon2_rad = lon1_rad + np.arctan2(np.sin(bearing_rad) * np.sin(d_div_R) * np.cos(lat1_rad),
-                                     np.cos(d_div_R) - np.sin(lat1_rad) * np.sin(lat2_rad))
-                                     
+
+        lat2_rad = np.arcsin(
+            np.sin(lat1_rad) * np.cos(d_div_R)
+            + np.cos(lat1_rad) * np.sin(d_div_R) * np.cos(bearing_rad)
+        )
+
+        lon2_rad = lon1_rad + np.arctan2(
+            np.sin(bearing_rad) * np.sin(d_div_R) * np.cos(lat1_rad),
+            np.cos(d_div_R) - np.sin(lat1_rad) * np.sin(lat2_rad),
+        )
+
         return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
 
     plot_kwargs = {"c": "orange", "lw": 0.7} | kwargs
@@ -43,8 +50,10 @@ def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs)
         target_lons, target_lats = calculate_destination_point(
             camera.position.lon, camera.position.lat, azimuths_deg, rd
         )
-        
-        positions = [Position(lon, lat, alt) for lon, lat in zip(target_lons, target_lats)]
+
+        positions = [
+            Position(lon, lat, alt) for lon, lat in zip(target_lons, target_lats)
+        ]
 
         # A single annotation call for each ring
         camera.annotate_positions(
@@ -53,7 +62,7 @@ def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs)
             ax=ax,
             **plot_kwargs,
         )
-        
+
     return {}
 
 
@@ -154,13 +163,13 @@ def make_camera_axes(
 
     if replace_ax is not None:
         fig = replace_ax.figure
-    
+
         # 1. Get the subplot's grid specification (its "slot" in the layout)
         spec = replace_ax.get_subplotspec()
-        
+
         # 2. Remove the old axes from the figure
         replace_ax.remove()
-        
+
         # 3. Add a new subplot in the SAME grid slot
         ax = fig.add_subplot(spec, projection=projection)
     else:
@@ -184,7 +193,6 @@ def make_camera_axes(
         ax.set_xticklabels([])
         ax.set_yticklabels([])
     return ax
-
 
 
 def get_timestamp_from_ax(ax):

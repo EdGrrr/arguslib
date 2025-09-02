@@ -26,11 +26,15 @@ ri_on_camera.show(dt)
 dt = datetime.datetime(2025, 3, 25, 9, 50, 49)
 
 # "Undistorted" cameras straighten out any distortion from the images.
-# Standard cameras also exist: `arguslib.camera.camera.Camera`. 
+# Standard cameras also exist: `arguslib.camera.camera.Camera`.
 # Camera arrays can also be loaded from config: CameraArray.from_config("COBALT"), but then contain standard (distorted cameras).
-multicam = CameraArray([
-    UndistortedCamera.from_config("COBALT", cam_id) for cam_id in ['5-1', '5-2', '5-3', '5-4', '3-7']
-], (3,3))
+multicam = CameraArray(
+    [
+        UndistortedCamera.from_config("COBALT", cam_id)
+        for cam_id in ["5-1", "5-2", "5-3", "5-4", "3-7"]
+    ],
+    (3, 3),
+)
 
 radar = Radar.from_config("COBALT")
 ri_on_multicam = RadarInterface(radar, multicam)
@@ -54,5 +58,9 @@ dt = datetime.datetime(2025, 5, 1, 6, 6, 18)
 cri = RadarInterface(radar, multicam)
 ai_on_ri_on_multicam = AircraftInterface(cri)
 ai_on_ri_on_multicam.load_flight_data(dt)
-ai_on_ri_on_multicam.show(dt, tlen=30 * 60, color_icao=True, trail_kwargs=dict(plot_kwargs=dict(plotting_method='intersect_plot')))
-
+ai_on_ri_on_multicam.show(
+    dt,
+    tlen=30 * 60,
+    color_icao=True,
+    trail_kwargs=dict(plot_kwargs=dict(plotting_method="intersect_plot")),
+)

@@ -33,7 +33,7 @@ class CameraData:
 
         self.video = None
         self.current_video_path = None
-        
+
         self.image = None
         self.current_image_time = None
 
@@ -50,7 +50,9 @@ class CameraData:
             self.current_video_path = filepath
 
         try:
-            self.image, self.current_image_time = self.video.get_data_time(dt, return_timestamp=True)
+            self.image, self.current_image_time = self.video.get_data_time(
+                dt, return_timestamp=True
+            )
         except ValueError as e:
             # Likely a "not in time bounds" error - happens when we are "between two frames"
             # if we are at the start, return the first frame if its within a minute
@@ -58,16 +60,20 @@ class CameraData:
                 dt < self.video.time_bounds[0]
                 and (self.video.time_bounds[0] - dt).seconds < 60
             ):
-                self.image, self.current_image_time = self.video.get_data_time(self.video.time_bounds[0], return_timestamp=True)
+                self.image, self.current_image_time = self.video.get_data_time(
+                    self.video.time_bounds[0], return_timestamp=True
+                )
             # if we are at the end, return the last frame if its within a minute
             elif (
                 dt > self.video.time_bounds[1]
                 and (dt - self.video.time_bounds[1]).seconds < 60
             ):
-                self.image, self.current_image_time = self.video.get_data_time(self.video.time_bounds[1], return_timestamp=return_timestamp)
+                self.image, self.current_image_time = self.video.get_data_time(
+                    self.video.time_bounds[1], return_timestamp=return_timestamp
+                )
             else:
                 raise e
-            
+
         if return_timestamp:
             return self.image, self.current_image_time
         else:
@@ -76,9 +82,9 @@ class CameraData:
     def get_video_file(self, dt):
         # dt is in utc.
         # but (TEST) the files are **named** with local time?
-        # get dt object which is timezone naive but 
+        # get dt object which is timezone naive but
         # dt = dt.replace(hour=dt.hour-1)
-        
+
         files = self.locator.search(
             "ARGUS",
             "video",

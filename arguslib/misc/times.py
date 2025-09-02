@@ -1,6 +1,7 @@
 import datetime
 import pytz
 
+
 def convert_to_london_naive(dt: datetime.datetime) -> datetime.datetime:
     """
     Converts a datetime object to a naive datetime in the 'Europe/London' timezone.
@@ -13,7 +14,7 @@ def convert_to_london_naive(dt: datetime.datetime) -> datetime.datetime:
         A naive datetime object representing the equivalent time in London.
     """
     # Define the target timezone
-    london_tz = pytz.timezone('Europe/London')
+    london_tz = pytz.timezone("Europe/London")
 
     # 1. If the datetime is naive, assume it's UTC and make it timezone-aware.
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:

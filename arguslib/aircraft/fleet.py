@@ -17,15 +17,8 @@ import xarray as xr
 # The fix is to create a local instance of this handler inside assign_era5_winds.
 try:
     from csat2.ECMWF import ERA5WindData
-    ERA5_LEVELS = [
-        "150hPa",
-        "175hPa",
-        "200hPa",
-        "225hPa",
-        "250hPa",
-        "300hPa",
-        "350hPa"
-    ]
+
+    ERA5_LEVELS = ["150hPa", "175hPa", "200hPa", "225hPa", "250hPa", "300hPa", "350hPa"]
     # This global handler is left for any other part of the code that might use it,
     # but the problematic assign_era5_winds will use its own local copy.
     ERA5_DATA_HANDLER = {lvl: ERA5WindData(lvl) for lvl in ERA5_LEVELS}
@@ -49,8 +42,8 @@ class AircraftPos:
         self.variables = variables
         self.positions = np.full(
             (60 * 60 * 24 // time_resolution, len(self.variables)), np.nan
-        ) # index 0  is at midnight. index 1 is at T, index 2 is 2T
-        self.time_resolution = time_resolution # T in seconds
+        )  # index 0  is at midnight. index 1 is at T, index 2 is 2T
+        self.time_resolution = time_resolution  # T in seconds
         self.last_update = None
         self.times = np.arange(0, 60 * 60 * 24, self.time_resolution)
 
@@ -94,8 +87,9 @@ class AircraftPos:
         tlen=2 * 60 * 60,
         spread_velocity=-1,
         wind_filter=-1,
-        winds='era5',
+        winds="era5",
         include_time=False,
+        adjust_mps=(0, 0),
     ):
         # The advected flight locations (based on the aircraft
         # measured windspeed for some time after dtime). If
@@ -103,7 +97,9 @@ class AircraftPos:
         # returns lon/lat positions for a given edge of the plume
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1 # Index immediately after requested dt
+        index = (
+            daysec // self.time_resolution + 1
+        )  # Index immediately after requested dt
         length = (tlen // self.time_resolution) + 2
         startind = int(max(0, index - length))
 
@@ -115,39 +111,46 @@ class AircraftPos:
         lon = self.positions[startind:index, self.variables.index("lon")]
         lat = self.positions[startind:index, self.variables.index("lat")]
 
-        if winds == 'aircraft':
+        if winds == "aircraft":
             ws = self.positions[startind:index, self.variables.index("ws")]
             wd = self.positions[startind:index, self.variables.index("wd")]
             wind_u, wind_v = (
                 -0.51444 * ws * np.sin(np.deg2rad(wd)),
                 -0.51444 * ws * np.cos(np.deg2rad(wd)),
             )
-        elif winds == 'era5':
+        elif winds == "era5":
             try:
-                u_idx = self.variables.index('uwind')
-                v_idx = self.variables.index('vwind')
+                u_idx = self.variables.index("uwind")
+                v_idx = self.variables.index("vwind")
                 wind_u = self.positions[startind:index, u_idx]
                 wind_v = self.positions[startind:index, v_idx]
-                if np.all(np.isnan(wind_u)): # Check if winds are missing
-                     raise ValueError("Pre-calculated ERA5 winds are all NaN.")
+                if np.all(np.isnan(wind_u)):  # Check if winds are missing
+                    raise ValueError("Pre-calculated ERA5 winds are all NaN.")
             except (ValueError, IndexError):
                 # This fallback should ideally not be used if assign_era5_winds has been run
                 if include_time:
                     return np.full((3, len(lon)), np.nan)
                 return np.full((2, len(lon)), np.nan)
 
+        # Apply the adjustment before filtering or any other processing
+        if adjust_mps != (0, 0):
+            wind_u = wind_u + adjust_mps[0]
+            wind_v = wind_v + adjust_mps[1]
+
         # Use a NaN-aware rolling average to filter the winds
         if wind_filter > 0 and len(wind_u) > 0:
-            wind_u = pd.Series(wind_u).rolling(
-                window=int(wind_filter),
-                min_periods=1,
-                center=True
-            ).mean().to_numpy()
-            wind_v = pd.Series(wind_v).rolling(
-                window=int(wind_filter),
-                min_periods=1,
-                center=True
-            ).mean().to_numpy()
+            wind_u = (
+                pd.Series(wind_u)
+                .rolling(window=int(wind_filter), min_periods=1, center=True)
+                .mean()
+                .to_numpy()
+            )
+            wind_v = (
+                pd.Series(wind_v)
+                .rolling(window=int(wind_filter), min_periods=1, center=True)
+                .mean()
+                .to_numpy()
+            )
 
         track_offset_km = np.array([wind_u, wind_v]) * times / 1000
 
@@ -161,9 +164,7 @@ class AircraftPos:
         if spread_velocity > 0:
             # Calculate the cross-track spreading of the trail
             track = self.positions[startind:index, self.variables.index("track")]
-            spread_direction = (
-                track + 90
-            )
+            spread_direction = track + 90
             spread_u, spread_v = spread_velocity * (
                 np.array(
                     [
@@ -188,22 +189,22 @@ class AircraftPos:
 
         return track_pos
 
-    def interpolate_position(self, dtime, alt_var='alt_geom'):
+    def interpolate_position(self, dtime, alt_var="alt_geom"):
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
         index = daysec // self.time_resolution
         # index before the current pos
         # different to get_trail's index, which indexes up to (and includes) this.
 
-        daysec_us = daysec + dtime.microsecond*1e-6
+        daysec_us = daysec + dtime.microsecond * 1e-6
 
         # Collect the values either side of the aircraft
         time = (daysec_us - self.times)[
-            index:index+2
+            index : index + 2
         ]  # Time since the aircraft passed this point
-        lon = self.positions[index:index+2, self.variables.index("lon")]
-        lat = self.positions[index:index+2, self.variables.index("lat")]
-        alt = self.positions[index:index+2, self.variables.index(alt_var)]
+        lon = self.positions[index : index + 2, self.variables.index("lon")]
+        lat = self.positions[index : index + 2, self.variables.index("lat")]
+        alt = self.positions[index : index + 2, self.variables.index(alt_var)]
 
         pos = np.array([lon, lat, alt])
         # Handle NaNs that might arise from slicing at the edge
@@ -220,13 +221,11 @@ class AircraftPos:
         offset = daysec % self.time_resolution
         index = daysec // self.time_resolution
 
-        daysec_us = daysec + dtime.microsecond*1e-6
+        daysec_us = daysec + dtime.microsecond * 1e-6
 
-        time = (daysec_us - self.times)[
-            index:index+2 # time before and after
-        ]
-        lon = self.positions[index:index+2, self.variables.index("lon")]
-        lat = self.positions[index:index+2, self.variables.index("lat")]
+        time = (daysec_us - self.times)[index : index + 2]  # time before and after
+        lon = self.positions[index : index + 2, self.variables.index("lon")]
+        lat = self.positions[index : index + 2, self.variables.index("lat")]
 
         if np.any(np.isnan(lon)) or np.any(np.isnan(lat)):
             return np.nan
@@ -234,14 +233,13 @@ class AircraftPos:
         bearing = geo.calculate_bearing(lat[0], lon[0], lat[1], lon[1])
         return bearing
 
-
     def get_track(self, dtime, tlen=2 * 60 * 60, include_time=False):
         # Provide the historical locations for the aircraft for some
         # period 'tlen' seconds behind the aircraft for a given time
         # 'dtime'
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1 # index immediately after current
+        index = daysec // self.time_resolution + 1  # index immediately after current
         length = (tlen // self.time_resolution) + 2  # For before+after slots
         startind = int(max(0, index - length))
 
@@ -252,7 +250,6 @@ class AircraftPos:
         alt = self.positions[startind:index, self.variables.index("alt_geom")]
         return np.array([lon, lat, alt] + ([times] if include_time else []))
 
-
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
         #'Data' here is constant (it does not vary with
         # location/advection). This could include the initial
@@ -260,7 +257,7 @@ class AircraftPos:
         # aircraft position/time (unlike aircraft type, for example)
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
-        index = daysec // self.time_resolution + 1 # index immediately after current
+        index = daysec // self.time_resolution + 1  # index immediately after current
         length = (tlen // self.time_resolution) + 2
         startind = int(max(0, index - length))
 
@@ -309,9 +306,10 @@ class Aircraft:
         dtime,
         tlen=2 * 60 * 60,
         spread_velocity=-1,
-        winds='era5',
+        winds="era5",
         wind_filter=-1,
         include_time=False,
+        adjust_mps=(0, 0),
     ):
         return self.pos.get_trail(
             dtime,
@@ -319,7 +317,8 @@ class Aircraft:
             spread_velocity=spread_velocity,
             wind_filter=wind_filter,
             include_time=include_time,
-            winds=winds
+            winds=winds,
+            adjust_mps=adjust_mps,
         )
 
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
@@ -367,7 +366,6 @@ class Fleet:
 
         return False
 
-
     def update_internal(self):
         self.write_output(self.last_update.strftime("%Y%m%d_ADS-B"))
         self.aircraft = {}
@@ -413,7 +411,7 @@ class Fleet:
 
         if self.loaded_file == filename:
             return
-        
+
         print(f"Loading ADS-B data from: {filename}")
 
         acft_list = []
@@ -427,24 +425,47 @@ class Fleet:
         # determine offset based on the date
         # adsb data is reported in local (UK) time. - in summer, UTC+1.
         # Determine the offset move that many indices EARLIER
-        file_dtime = datetime.datetime.strptime((filename.split("/")[-1]).split("_")[0], "%Y%m%d")
-        offset = int((convert_to_london_naive(file_dtime.replace(hour=12)) - file_dtime.replace(hour=12)).total_seconds() / self.time_resolution)
+        file_dtime = datetime.datetime.strptime(
+            (filename.split("/")[-1]).split("_")[0], "%Y%m%d"
+        )
+        offset = int(
+            (
+                convert_to_london_naive(file_dtime.replace(hour=12))
+                - file_dtime.replace(hour=12)
+            ).total_seconds()
+            / self.time_resolution
+        )
 
         self.aircraft: dict[str, Aircraft] = {}
         with netCDF4.Dataset(filename + ".nc") as ncdf:
             var_data = []
             for vind, vname in enumerate(self.variables):
                 try:
-                    var_data.append(ncdf.variables[vname]) # axes: 0: aircraft, 1: time
-                except KeyError: # Likely a field that has been added programatically to be obtained from another source (i.e. uwind, vwind). Set these to be NaN
+                    var_data.append(ncdf.variables[vname])  # axes: 0: aircraft, 1: time
+                except (
+                    KeyError
+                ):  # Likely a field that has been added programatically to be obtained from another source (i.e. uwind, vwind). Set these to be NaN
                     var_data.append(None)
             first_actual_vardata = 0
             while var_data[first_actual_vardata] is None:
                 first_actual_vardata += 1
-            var_data = [v if v is not None else np.full_like(var_data[first_actual_vardata], np.nan) for v in var_data]
-            var_data = np.array(var_data) # axes: 0: variable, 1: aircraft, 2: time
+            var_data = [
+                (
+                    v
+                    if v is not None
+                    else np.full_like(var_data[first_actual_vardata], np.nan)
+                )
+                for v in var_data
+            ]
+            var_data = np.array(var_data)  # axes: 0: variable, 1: aircraft, 2: time
             if offset != 0:
-                var_data = np.concatenate([var_data[:, :, offset:], np.full((*var_data.shape[:2],offset), np.nan)], axis=-1)
+                var_data = np.concatenate(
+                    [
+                        var_data[:, :, offset:],
+                        np.full((*var_data.shape[:2], offset), np.nan),
+                    ],
+                    axis=-1,
+                )
 
             for aind, acft_name in tqdm.tqdm(
                 enumerate(acft_list), desc="Loading ADS-B data", unit="acft"
@@ -477,7 +498,9 @@ class Fleet:
         """
         tracks = {}
         for ac in self.aircraft.keys():
-            tracks[ac] = self.aircraft[ac].get_track(dtime, tlen, include_time=include_time)
+            tracks[ac] = self.aircraft[ac].get_track(
+                dtime, tlen, include_time=include_time
+            )
         return tracks
 
     def get_trails(
@@ -487,15 +510,28 @@ class Fleet:
         spread_velocity=-1,
         wind_filter=-1,
         include_time=False,
-        winds='era5',
+        winds="era5",
+        adjust_mps=(0, 0),
     ):
         """Returns trail position (lon, lat, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)
 
         Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
         """
-        if (winds == "era5") and (("uwind" not in self.variables) or (not self.has_notnull_data('uwind'))):
-            print(f"Warning (Fleet.get_trails): No ERA5 wind data available for {dtime}. Using aircraft ADS-B winds (quite inaccurate).")
-            return self.get_trails(dtime, tlen, spread_velocity, wind_filter, include_time, winds='aircraft')
+        if (winds == "era5") and (
+            ("uwind" not in self.variables) or (not self.has_notnull_data("uwind"))
+        ):
+            print(
+                f"Warning (Fleet.get_trails): No ERA5 wind data available for {dtime}. Using aircraft ADS-B winds (quite inaccurate)."
+            )
+            return self.get_trails(
+                dtime,
+                tlen,
+                spread_velocity,
+                wind_filter,
+                include_time,
+                winds="aircraft",
+                adjust_mps=adjust_mps,
+            )
 
         trails = {}
         for ac in self.aircraft.keys():
@@ -506,6 +542,7 @@ class Fleet:
                 wind_filter=wind_filter,
                 include_time=include_time,
                 winds=winds,
+                adjust_mps=adjust_mps,
             )
         return trails
 
@@ -533,23 +570,27 @@ class Fleet:
             ValueError: If the date cannot be parsed from the loaded filename.
         """
         if ERA5_DATA_HANDLER is None:
-            raise RuntimeError("ERA5WindData handler is not available. Please check your csat2 installation.")
+            raise RuntimeError(
+                "ERA5WindData handler is not available. Please check your csat2 installation."
+            )
 
         if self.loaded_file is None:
-            raise RuntimeError("Fleet data must be loaded using 'load_output' before assigning wind data.")
+            raise RuntimeError(
+                "Fleet data must be loaded using 'load_output' before assigning wind data."
+            )
 
         # --- FIX: Create a fresh, local instance of the ERA5 data handler ---
         # This avoids using the global, shared handler which causes file handle errors
         # on subsequent calls by ensuring each call to this method gets its own objects.
         try:
             from csat2.ECMWF import ERA5WindData
+
             local_era5_data_handler = {lvl: ERA5WindData(lvl) for lvl in ERA5_LEVELS}
         except ImportError:
             raise RuntimeError("csat2.ECMWF.ERA5WindData could not be imported.")
 
-
         # --- 1. Add uwind and vwind to variables ---
-        new_vars = [var for var in ['uwind', 'vwind'] if var not in self.variables]
+        new_vars = [var for var in ["uwind", "vwind"] if var not in self.variables]
         if new_vars:
             # print(f"Adding {new_vars} to fleet variables.")
             original_var_count = len(self.variables)
@@ -565,30 +606,39 @@ class Fleet:
         # --- 2. Parse date from filename ---
         import os
         import datetime
+
         try:
             fname = os.path.basename(self.loaded_file)
-            date_str = fname.split('_')[0]
-            base_date = datetime.datetime.strptime(date_str, '%Y%m%d')
+            date_str = fname.split("_")[0]
+            base_date = datetime.datetime.strptime(date_str, "%Y%m%d")
         except (ValueError, IndexError):
-            raise ValueError(f"Could not parse date from filename: {self.loaded_file}. Expected format is 'YYYYMMDD_...'.")
+            raise ValueError(
+                f"Could not parse date from filename: {self.loaded_file}. Expected format is 'YYYYMMDD_...'."
+            )
 
         # check if the era5 data is there using the new local handler
-        needs_download=False
+        needs_download = False
         for level, handler in local_era5_data_handler.items():
             try:
                 handler.get_data_time(base_date)
             except IndexError:
-                print(f"ERA5 data for {level} on {base_date.date()} appears to be missing (locator.search failed).")
+                print(
+                    f"ERA5 data for {level} on {base_date.date()} appears to be missing (locator.search failed)."
+                )
                 needs_download = True
                 break
             except Exception as e:
-                print(f"Warning: Error checking/loading ERA5 data for {level} on {base_date.date()}: {e}. ")
+                print(
+                    f"Warning: Error checking/loading ERA5 data for {level} on {base_date.date()}: {e}. "
+                )
                 # Continue, as re-downloading might not fix non-IndexError issues.
 
         if needs_download:
             if _download_attempted_this_call:
-                msg = (f"ERA5 download was already attempted for {base_date.date()} but files are still "
-                       f"not found. Aborting wind assignment to prevent infinite loop.")
+                msg = (
+                    f"ERA5 download was already attempted for {base_date.date()} but files are still "
+                    f"not found. Aborting wind assignment to prevent infinite loop."
+                )
                 print(msg)
                 raise RuntimeError(msg)
 
@@ -603,7 +653,11 @@ class Fleet:
             #     return
 
         # --- 3. Vectorized Data Preparation ---
-        lon_idx, lat_idx, alt_idx = self.variables.index("lon"), self.variables.index("lat"), self.variables.index("alt_geom")
+        lon_idx, lat_idx, alt_idx = (
+            self.variables.index("lon"),
+            self.variables.index("lat"),
+            self.variables.index("alt_geom"),
+        )
         u_idx, v_idx = self.variables.index("uwind"), self.variables.index("vwind")
 
         aircraft_list = list(self.aircraft.values())
@@ -611,11 +665,13 @@ class Fleet:
             print("No aircraft in fleet. Aborting wind assignment.")
             return
 
-        all_positions = np.stack([ac.pos.positions for ac in aircraft_list]).astype(np.float32)
+        all_positions = np.stack([ac.pos.positions for ac in aircraft_list]).astype(
+            np.float32
+        )
         valid_mask = (
-            np.isfinite(all_positions[:, :, lon_idx]) &
-            np.isfinite(all_positions[:, :, lat_idx]) &
-            np.isfinite(all_positions[:, :, alt_idx])
+            np.isfinite(all_positions[:, :, lon_idx])
+            & np.isfinite(all_positions[:, :, lat_idx])
+            & np.isfinite(all_positions[:, :, alt_idx])
         )
         ac_indices, t_indices = np.where(valid_mask)
 
@@ -628,7 +684,7 @@ class Fleet:
         valid_alts = all_positions[ac_indices, t_indices, alt_idx]
 
         base_datetime64 = np.datetime64(base_date)
-        time_deltas = t_indices * np.timedelta64(self.time_resolution, 's')
+        time_deltas = t_indices * np.timedelta64(self.time_resolution, "s")
         valid_datetimes_np = base_datetime64 + time_deltas
 
         # --- 4. Group points by ERA5 time interval ---
@@ -640,7 +696,7 @@ class Fleet:
         # --- 5. Process each group with a single 4D interpolation ---
         print("Assigning ERA5 wind data to fleet positions...")
         for i in tqdm.tqdm(range(num_intervals), desc="Processing 4D time chunks"):
-            chunk_mask = (interval_bins == i)
+            chunk_mask = interval_bins == i
             if not np.any(chunk_mask):
                 continue
 
@@ -656,38 +712,67 @@ class Fleet:
                 def load_3d_wind_field(dtime):
                     wind_u_3d, wind_v_3d = [], []
                     for level in ERA5_LEVELS:
-                        wind_u_da, wind_v_da = local_era5_data_handler[level].get_data_time(dtime)
+                        wind_u_da, wind_v_da = local_era5_data_handler[
+                            level
+                        ].get_data_time(dtime)
                         wind_u_da = geo.xr_add_cyclic_points(wind_u_da)
                         wind_v_da = geo.xr_add_cyclic_points(wind_v_da)
                         wind_u_3d.append(wind_u_da)
                         wind_v_3d.append(wind_v_da)
                     plevels = [float(lvl.removesuffix("hPa")) for lvl in ERA5_LEVELS]
-                    u_field = xr.concat(wind_u_3d, "plevel").assign_coords({"plevel": plevels})
-                    v_field = xr.concat(wind_v_3d, "plevel").assign_coords({"plevel": plevels})
+                    u_field = xr.concat(wind_u_3d, "plevel").assign_coords(
+                        {"plevel": plevels}
+                    )
+                    v_field = xr.concat(wind_v_3d, "plevel").assign_coords(
+                        {"plevel": plevels}
+                    )
                     return u_field, v_field
 
                 u_field_start, v_field_start = load_3d_wind_field(start_t)
                 u_field_end, v_field_end = load_3d_wind_field(end_t)
 
-                wind_u_4d = xr.concat([u_field_start, u_field_end], dim='time').assign_coords({'time': [start_t, end_t]})
-                wind_v_4d = xr.concat([v_field_start, v_field_end], dim='time').assign_coords({'time': [start_t, end_t]})
+                wind_u_4d = xr.concat(
+                    [u_field_start, u_field_end], dim="time"
+                ).assign_coords({"time": [start_t, end_t]})
+                wind_v_4d = xr.concat(
+                    [v_field_start, v_field_end], dim="time"
+                ).assign_coords({"time": [start_t, end_t]})
 
-                ds_track = xr.Dataset({
-                    'lon': ('points', valid_lons[chunk_mask] % 360),
-                    'lat': ('points', valid_lats[chunk_mask]),
-                    'alt': ('points', np.clip(geo.ft_to_hPa(valid_alts[chunk_mask]), 150., 350.)),
-                    'time': ('points', valid_datetimes_np[chunk_mask])
-                })
+                ds_track = xr.Dataset(
+                    {
+                        "lon": ("points", valid_lons[chunk_mask] % 360),
+                        "lat": ("points", valid_lats[chunk_mask]),
+                        "alt": (
+                            "points",
+                            np.clip(
+                                geo.ft_to_hPa(valid_alts[chunk_mask]), 150.0, 350.0
+                            ),
+                        ),
+                        "time": ("points", valid_datetimes_np[chunk_mask]),
+                    }
+                )
 
-                u_vals = wind_u_4d.interp(lon=ds_track.lon, lat=ds_track.lat, plevel=ds_track.alt, time=ds_track.time).values
-                v_vals = wind_v_4d.interp(lon=ds_track.lon, lat=ds_track.lat, plevel=ds_track.alt, time=ds_track.time).values
+                u_vals = wind_u_4d.interp(
+                    lon=ds_track.lon,
+                    lat=ds_track.lat,
+                    plevel=ds_track.alt,
+                    time=ds_track.time,
+                ).values
+                v_vals = wind_v_4d.interp(
+                    lon=ds_track.lon,
+                    lat=ds_track.lat,
+                    plevel=ds_track.alt,
+                    time=ds_track.time,
+                ).values
 
                 # --- 6. Vectorized Final Assignment ---
                 all_positions[chunk_ac_indices, chunk_t_indices, u_idx] = u_vals
                 all_positions[chunk_ac_indices, chunk_t_indices, v_idx] = v_vals
 
             except Exception as e:
-                print(f"\nWarning: Could not process wind chunk for {start_t} to {end_t}: {e}")
+                print(
+                    f"\nWarning: Could not process wind chunk for {start_t} to {end_t}: {e}"
+                )
 
         # --- 7. Unstack data back into individual aircraft objects ---
         for i, acft in enumerate(aircraft_list):

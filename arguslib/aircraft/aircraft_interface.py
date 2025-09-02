@@ -2,6 +2,8 @@ import numpy as np
 import datetime
 from pathlib import Path
 
+import pytz
+
 from arguslib.misc.plotting import get_timestamp_from_ax
 
 
@@ -12,6 +14,13 @@ from ..camera.camera import Camera
 from ..camera.direct_camera import DirectCamera
 from ..instruments import Position
 from .fleet import Fleet
+
+
+def adjust_trail_positions(positions: list[Position], adjust_km):
+    if adjust_km[0] == 0 and adjust_km[1] == 0:
+        return positions
+    positions = [p.xyz_to_lla(adjust_km[0], adjust_km[1], 0) for p in positions]
+    return positions
 
 
 class AircraftInterface(PlottableInstrument):
@@ -62,8 +71,12 @@ class AircraftInterface(PlottableInstrument):
         return cls(
             Camera.from_config(campaign, camstr),
         )
-        
-    def load_flight_data(self, date_or_dt: datetime.date | datetime.datetime, adsb_data_dir: str | Path = None):
+
+    def load_flight_data(
+        self,
+        date_or_dt: datetime.date | datetime.datetime,
+        adsb_data_dir: str | Path = None,
+    ):
         """
         Loads ADS-B flight data for the specified date from the given directory
         and assigns ERA5 wind data to the fleet.
@@ -77,7 +90,7 @@ class AircraftInterface(PlottableInstrument):
             TypeError: If date_or_dt is not a datetime.date or datetime.datetime object.
             FileNotFoundError: If the ADS-B data directory or necessary files are not found.
         """
-        
+
         if adsb_data_dir is None:
             # load it from config
             config_paths = [
@@ -91,18 +104,18 @@ class AircraftInterface(PlottableInstrument):
                 with open(config_file, "r") as f:
                     adsb_data_dir = f.read().strip()
                 break
-        
-        if adsb_data_dir is None:
-            raise FileNotFoundError(
-                "ADS-B data directory not found.")
 
-        
+        if adsb_data_dir is None:
+            raise FileNotFoundError("ADS-B data directory not found.")
+
         if isinstance(date_or_dt, datetime.datetime):
             date_to_load = date_or_dt.date()
         elif isinstance(date_or_dt, datetime.date):
             date_to_load = date_or_dt
         else:
-            raise TypeError("date_or_dt must be a datetime.date or datetime.datetime object.")
+            raise TypeError(
+                "date_or_dt must be a datetime.date or datetime.datetime object."
+            )
 
         adsb_dir_path = Path(adsb_data_dir)
         if not adsb_dir_path.is_dir():
@@ -112,8 +125,10 @@ class AircraftInterface(PlottableInstrument):
         # fleet.load_output expects the base path and appends .nc and .txt itself.
         adsb_file_path_base = adsb_dir_path / adsb_file_basename
 
-        if not (adsb_file_path_base.with_suffix(".nc").exists() and \
-                adsb_file_path_base.with_suffix(".txt").exists()):
+        if not (
+            adsb_file_path_base.with_suffix(".nc").exists()
+            and adsb_file_path_base.with_suffix(".txt").exists()
+        ):
             raise FileNotFoundError(
                 f"Required ADS-B files not found: {adsb_file_path_base.with_suffix('.nc')} "
                 f"or {adsb_file_path_base.with_suffix('.txt')}"
@@ -121,20 +136,39 @@ class AircraftInterface(PlottableInstrument):
 
         self.fleet.load_output(str(adsb_file_path_base))
 
-        if not self.fleet.has_notnull_data('uwind'):
+        if not self.fleet.has_notnull_data("uwind"):
             print("Attempting to assign ERA5 wind data to fleet...")
             try:
-                self.fleet.assign_era5_winds() # This method has its own error handling and print statements
+                self.fleet.assign_era5_winds()  # This method has its own error handling and print statements
                 print("Flight data loading and ERA5 wind assignment process complete.")
             except ValueError:
-                print("Error occurred during flight data loading or ERA5 wind assignment. Will use aircraft ADS-B wind as a fallback.")
+                print(
+                    "Error occurred during flight data loading or ERA5 wind assignment. Will use aircraft ADS-B wind as a fallback."
+                )
 
     def get_trails(self, time, **kwargs):
-        kwargs = {"wind_filter": 10, "tlen": 3600, 'include_time':True} | kwargs
+        kwargs = {"wind_filter": -1, "tlen": 3600, "include_time": True} | kwargs
         return self.fleet.get_trails(time, **kwargs)
 
     def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
         ax = self.camera.show(dt, ax=ax, **kwargs)
+
+        if self.camera.__class__.__name__ == "RadarInterface":
+            # If the underlying camera is a radar interface, we need to get the start and end time of the sweep
+            pyart_radar = self.camera.radar.data_loader.get_pyart_radar(dt)
+            self.start_time = datetime.datetime.fromtimestamp(
+                pyart_radar.time["data"][0], tz=pytz.timezone("Europe/London")
+            ).replace(year=dt.year, month=dt.month, day=dt.day)
+            self.end_time = datetime.datetime.fromtimestamp(
+                pyart_radar.time["data"][-1], tz=pytz.timezone("Europe/London")
+            ).replace(year=dt.year, month=dt.month, day=dt.day)
+            # these timestamps are coming out in UK time, need to convert to UTC
+            self.start_time = self.start_time.astimezone(datetime.timezone.utc).replace(
+                tzinfo=None
+            )
+            self.end_time = self.end_time.astimezone(datetime.timezone.utc).replace(
+                tzinfo=None
+            )
 
         self.plot_trails(dt, ax=ax, tlen=tlen, color_icao=color_icao, **trail_kwargs)
         return ax
@@ -146,6 +180,8 @@ class AircraftInterface(PlottableInstrument):
         self,
         dt,
         ax,
+        adjust_km=(0, 0),
+        adjust_mps=(0, 0),
         color_icao=True,
         label_acft=False,
         icao_include: list = None,
@@ -155,38 +191,148 @@ class AircraftInterface(PlottableInstrument):
         advection_winds="era5",
         **kwargs,
     ):
-        kwargs = {"wind_filter": 10, "tlen": 3600} | kwargs
-        
-        
+        kwargs = {"wind_filter": -1, "tlen": 3600, "adjust_mps": adjust_mps} | kwargs
+
+        plot_trails_kwargs = (
+            {"plotting_method": "intersect_plot"}
+            if self.camera.__class__.__name__ == "RadarInterface"
+            else {}
+        )
+
         if not self.fleet.loaded_file:
-            print(f"Warning (AircraftInterface.plot_trails): No ADS-B data seems to have been loaded (fleet.loaded_file is None). "
-                  f"Call 'load_flight_data()' on the AircraftInterface instance. No trails will be plotted for {dt}.")
+            print(
+                f"Warning (AircraftInterface.plot_trails): No ADS-B data seems to have been loaded (fleet.loaded_file is None). "
+                f"Call 'load_flight_data()' on the AircraftInterface instance. No trails will be plotted for {dt}."
+            )
             return
         if not self.fleet.aircraft:
             # This means loaded_file might be set, but the file contained no aircraft or was empty.
-            print(f"Warning (AircraftInterface.plot_trails): ADS-B data loaded from '{self.fleet.loaded_file}', "
-                  f"but fleet.aircraft is empty. No trails will be plotted for {dt}.")
+            print(
+                f"Warning (AircraftInterface.plot_trails): ADS-B data loaded from '{self.fleet.loaded_file}', "
+                f"but fleet.aircraft is empty. No trails will be plotted for {dt}."
+            )
             return
-        
-        
+
         if ax is None:
             # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
             timestamp = self.camera.data_loader.current_image_time
         else:
             timestamp = get_timestamp_from_ax(ax)
 
-
-        loaded_date = datetime.datetime.strptime(self.fleet.loaded_file.split("/")[-1], "%Y%m%d_ADS-B")
+        loaded_date = datetime.datetime.strptime(
+            self.fleet.loaded_file.split("/")[-1], "%Y%m%d_ADS-B"
+        )
         if timestamp.replace(hour=0, minute=0, second=0, microsecond=0) != loaded_date:
-            raise ValueError(f"Plotting timestamp {timestamp} does not match loaded date {loaded_date}")
+            raise ValueError(
+                f"Plotting timestamp {timestamp} does not match loaded date {loaded_date}"
+            )
 
-        kwargs['winds'] = advection_winds
+        kwargs["winds"] = advection_winds
+        # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
+        plotting_method = plot_kwargs.pop("plotting_method", None)
+        if plotting_method is None:
+            plotting_method = plot_trails_kwargs.pop("plotting_method", None)
+        if plotting_method == "intersect_plot":
+            label_acft_intersect = label_acft
+            label_acft = False
+
+        dict_positions = self.get_trail_positions(
+            timestamp, icao_include=icao_include, **kwargs
+        )
+        for acft, (positions, ages) in dict_positions.items():
+            # Make a copy of the kwargs to safely modify
+            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
+
+            acft_kwargs = {
+                "color": f"#{acft}" if color_icao else "red",
+                "label": f"{acft}" if label_acft else None,
+            }
+            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
+            # This is safe because 'plotting_method' and other special kwargs are removed.
+            positions = adjust_trail_positions(positions, adjust_km)
+            self.camera.annotate_positions(
+                positions, dt, ax, **(acft_kwargs | trail_plot_args)
+            )
+
+        if plotting_method == "intersect_plot":
+
+            # here we need to chunk up the radar, get trails at different times, and plot those.
+            intersect_chunk_size = 10  # s
+
+            times_midpoints = np.arange(
+                self.start_time.timestamp() + intersect_chunk_size / 2,
+                self.end_time.timestamp(),
+                intersect_chunk_size / 2,
+            )
+            times_edges = np.arange(
+                self.start_time.timestamp(),
+                self.end_time.timestamp() + intersect_chunk_size / 2,
+                intersect_chunk_size / 2,
+            )
+            plotted_icaos = []
+            for t, (ti, tf) in zip(
+                times_midpoints, zip(times_edges[:-2], times_edges[2:])
+            ):
+                dict_positions = self.get_trail_positions(
+                    datetime.datetime.fromtimestamp(t),
+                    icao_include=icao_include,
+                    **kwargs,
+                )
+                for acft, (positions, ages) in dict_positions.items():
+                    if acft in plotted_icaos:
+                        continue
+
+                    # Make a copy of the kwargs to safely modify
+                    trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
+
+                    acft_kwargs = {
+                        "color": f"#{acft}" if color_icao else "red",
+                        "label": f"{acft}" if label_acft_intersect else None,
+                    }
+
+                    positions = adjust_trail_positions(positions, adjust_km)
+
+                    # Define kwargs specifically for the intersection markers
+                    intersect_kwargs = {"marker": "X", "s": 25}
+                    # acft_kwargs.pop('label', None)
+                    intersect_success = self.camera.annotate_intersections(
+                        positions,
+                        ages,
+                        dt,
+                        ax,
+                        time_bounds=(
+                            datetime.datetime.fromtimestamp(ti),
+                            datetime.datetime.fromtimestamp(tf),
+                        ),
+                        **(acft_kwargs | trail_plot_args | intersect_kwargs),
+                    )
+                    if intersect_success:
+                        plotted_icaos.append(acft)
+
+        self.camera.annotate_positions(
+            positions[-1:],
+            timestamp,
+            ax,
+            color="r",
+            marker="o",
+            markersize=2,
+            **trail_plot_args,
+        )
+
+    def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)
-        trail_alts_geom = self.fleet.get_data(timestamp, "alt_geom", tlen=kwargs["tlen"])
+        trail_alts_geom = self.fleet.get_data(
+            timestamp,
+            "alt_geom",
+            tlen=kwargs["tlen"],
+        )
 
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
+        acfts = []
+        positions_lists = []
+        ages_lists = []
         for acft in trail_latlons.keys():
             if (
                 np.isnan(trail_latlons[acft])
@@ -198,50 +344,28 @@ class AircraftInterface(PlottableInstrument):
             lats = trail_latlons[acft][1]
             alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
             # Get the times array!
-            times = trail_latlons[acft][2] # Assuming get_trails returns this
+            ages = trail_latlons[acft][2]  # Assuming get_trails returns this
 
             current_pos = self.fleet.aircraft[acft].pos.interpolate_position(timestamp)
-            current_time = timestamp # Or get a more precise time if available
-            
+
+            # differentce between the current timestamp and the last point in the get_trails...
+
+            current_time = 0.0  # Or get a more precise time if available
+
             lons = np.append(lons, current_pos[0])
             lats = np.append(lats, current_pos[1])
             alts_km = np.append(alts_km, ft_to_km(current_pos[2]))
-            # Append the current time to the times array
-            times = np.append(times, current_time)
+            # Append the current time to the ages array
+            ages = np.append(ages, current_time)
 
             positions = [
-                Position(lon, lat, alt_m) for lon, lat, alt_m in zip(lons, lats, alts_km)
+                Position(lon, lat, alt_m)
+                for lon, lat, alt_m in zip(lons, lats, alts_km)
             ]
-            # Make a copy of the kwargs to safely modify
-            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
-            
-            # Pop the special 'plotting_method' so it's not passed to the generic call
-            plotting_method = trail_plot_args.pop('plotting_method', None)
-
-            acft_kwargs = {'color': f"#{acft}" if color_icao else 'red', 'label': f"{acft}" if label_acft else None}
-            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
-            # This is safe because 'plotting_method' and other special kwargs are removed.
-            self.camera.annotate_positions(
-                positions, dt, ax, **(acft_kwargs | trail_plot_args)
-            )
-
-            # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
-            if plotting_method == 'intersect_plot':
-                # Define kwargs specifically for the intersection markers
-                intersect_kwargs = {'marker': 'X', 's': 25}
-                acft_kwargs.pop('label', None)
-                self.camera.annotate_intersections(
-                    positions, times, dt, ax,  **(acft_kwargs | trail_plot_args | intersect_kwargs)
-                )
-            self.camera.annotate_positions(
-                positions[-1:],
-                timestamp,
-                ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
-            )
+            acfts.append(acft)
+            positions_lists.append(positions)
+            ages_lists.append(ages)
+        return dict(zip(acfts, zip(positions_lists, ages_lists)))
 
     def to_image_array(self, time=True):
         """
@@ -272,10 +396,11 @@ class AircraftInterface(PlottableInstrument):
 class AutomaticADSBAircraftInterface(AircraftInterface):
     def __init__(self, camera: PlottableInstrument):
         super().__init__(camera)
-        
+
     def show(self, dt, *args, **kwargs):
         self.load_flight_data(dt)
         return super().show(dt, *args, **kwargs)
+
 
 # %%
 # %%

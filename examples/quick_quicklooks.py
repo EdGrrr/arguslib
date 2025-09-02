@@ -22,15 +22,15 @@ radar = Radar.from_config("COBALT")
 cam = UndistortedCamera.from_config("COBALT", "3-7")
 # cam = CameraArray.from_config("COBALTArray")
 cri = RadarInterface(radar, cam)
-cai = AircraftInterface(cri) 
+cai = AircraftInterface(cri)
 
-dt = datetime.datetime(2025, 5,11,11,57,41)
+dt = datetime.datetime(2025, 5, 11, 11, 57, 41)
 
 cai.load_flight_data(dt)
 
 # %%
 ax_cam, ax_radar = cai.show(
-    datetime.datetime(2025, 5,11, 6,9),
+    datetime.datetime(2025, 5, 11, 6, 9),
     # dt,
     tlen=15 * 60,
     color_icao=True,
@@ -39,8 +39,8 @@ ax_cam, ax_radar = cai.show(
         # "icao_include": ["06a11e", "3949e4"],
         # "icao_include": ["4cadfe"],
         # "icao_include":[
-            # "407f7b", 
-            # ],
+        # "407f7b",
+        # ],
         "plot_kwargs": {
             "alpha": 0.5,
             "radar_kwargs": {"plotting_method": "intersect_plot"},
@@ -54,8 +54,10 @@ ax_radar.legend(ncol=4, fontsize="small")
 
 # %%
 from arguslib.misc.geo import ft_to_km
-ft_to_km(cai.fleet.get_tracks(dt)['407f7b'][-1])
+
+ft_to_km(cai.fleet.get_tracks(dt)["407f7b"][-1])
 # %%
 from arguslib.instruments import Position
+
 radar.position.target_ead(Position(radar.position.lon, radar.position.lat, 10))
 # %%
