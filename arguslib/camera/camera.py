@@ -25,7 +25,7 @@ import numpy as np
 from tqdm import trange
 
 from pathlib import Path
-from typing import override
+from typing_extensions import override
 
 
 class Camera(Instrument):

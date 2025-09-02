@@ -2,13 +2,39 @@
 name = 'arguslib'
 description = 'Support library for using cameras in the argus network'
 version = '0.2'
-requires-python = ">= 3.8"
+requires-python = ">=3.9"
 dependencies = [
-'numpy'
+'numpy',
+'matplotlib',
+'opencv-python',
+'arm-pyart',
+'xarray',
+'netCDF4',
+'pandas',
+'pyyaml',
+'Pillow',
+'pytz',
+'tqdm',
+'typing-extensions',
+'csat2 @ git+https://github.com/EdGrrr/csat2.git',
 ]
 authors = [
 {name = 'Edward Gryspeerdt', email='e.gryspeerdt@imperial.ac.uk'},
 {name = 'Oliver Driver'}
+]
+
+[project.urls]
+Homepage = "https://github.com/EdGrrr/arguslib"
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=5.0",
+    "sphinx_rtd_theme",
+    "sphinx-autodoc-typehints",
+]
+dev = [
+    "streamlit",
+    "pytest",
 ]
 
 [build-system]

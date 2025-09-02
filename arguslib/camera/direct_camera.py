@@ -1,7 +1,7 @@
 from .undistorted_camera import UndistortedCamera
 from .camera import Camera
 import numpy as np
-from typing import override
+from typing_extensions import override
 from ..misc.geo import haversine
 from ..misc.plotting import plot_range_rings
 
