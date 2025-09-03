@@ -176,7 +176,7 @@ class DirectCamera(
                 bottomLeftOrigin=True,
             )
 
-        return im[*slicer]
+        return im[slicer[0], slicer[1], slicer[2]]
 
 
 class DirectUndistortedCamera(UndistortedCamera, DirectCamera):

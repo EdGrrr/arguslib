@@ -1,3 +1,4 @@
+from typing import Union
 import xarray as xr
 import datetime
 import pyart
@@ -24,8 +25,8 @@ class RadarData:
         self.scan_type = scan_type
         self.locator = initialise_locator()
 
-        self.radar_data: pyart.core.Radar | None = None  # Type hint for clarity
-        self.current_file_path: str | None = None
+        self.radar_data: Union[pyart.core.Radar, None] = None  # Type hint for clarity
+        self.current_file_path: Union[str, None] = None
 
     def get_gridded_data_time(self, dt, var) -> xr.DataArray:
         if self.scan_type == "vpt":
@@ -126,7 +127,7 @@ class RadarData:
 
         return self.radar_data
 
-    def get_filepath(self, dt: datetime.datetime) -> str | None:
+    def get_filepath(self, dt: datetime.datetime) -> str:
         """
         Finds the filepath of a radar scan that contains the given datetime 'dt'.
         It searches all files for the day of 'dt', then checks their actual

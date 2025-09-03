@@ -1,7 +1,7 @@
 import numpy as np
 import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import pytz
 
@@ -79,8 +79,8 @@ class AircraftInterface(PlottableInstrument):
 
     def load_flight_data(
         self,
-        date_or_dt: datetime.date | datetime.datetime,
-        adsb_data_dir: str | Path = None,
+        date_or_dt: Union[datetime.date, datetime.datetime],
+        adsb_data_dir: Union[str, Path] = None,
     ):
         """
         Loads ADS-B flight data for the specified date from the given directory
