@@ -176,7 +176,7 @@ class Camera(Instrument):
 
     @override
     def initialise_data_loader(self):
-        from ..camera import CameraData
+        from .locator import CameraData
 
         self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
 
@@ -278,7 +278,7 @@ class Camera(Instrument):
 
         ax.grid(False)
 
-        plot_range_rings(self, dt, ax=ax)
+        plot_range_rings(self, self, dt, ax=ax)
 
         try:
             img, timestamp = self.get_data_time(dt, return_timestamp=True)

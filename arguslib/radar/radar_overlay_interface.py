@@ -1,22 +1,10 @@
 import datetime
-from inspect import signature
-from cycler import V
 import numpy as np
 import pyart
 import re
 from pyart.util import datetime_from_radar
 
 from arguslib.instruments.instruments import PlottableInstrument, Position
-
-# We will duck-type the radar, but it's typically arguslib.radar.radar.Radar
-from ..camera.camera import Camera  # Needed for from_campaign helper
-from ..camera.camera_array import CameraArray  # Needed for from_campaign helper
-from ..camera.direct_camera import (
-    DirectUndistortedCamera,
-)  # Needed for from_campaign helper
-from arguslib.aircraft.aircraft_interface import (
-    AircraftInterface,
-)  # Needed for from_campaign helper
 
 
 class RadarOverlayInterface(PlottableInstrument):
@@ -388,6 +376,16 @@ class RadarOverlayInterface(PlottableInstrument):
 
     @staticmethod
     def _create_plottable_instrument_from_config(campaign: str, config_dict: dict):
+        # Imports are moved inside the method to break circular dependencies at import time.
+        from ..camera.camera import Camera
+        from ..camera.camera_array import CameraArray
+        from ..camera.direct_camera import DirectUndistortedCamera
+        from arguslib.aircraft.aircraft_interface import AircraftInterface
+
+        # The method calls itself recursively, so it needs to be available.
+        # This is safe because we are importing from the module that is currently defining the class.
+        from arguslib.radar.radar_overlay_interface import RadarOverlayInterface
+
         target_type = config_dict.get("type")
         camstr = config_dict.get("camstr")  # Common for Camera and DirectCamera
 
