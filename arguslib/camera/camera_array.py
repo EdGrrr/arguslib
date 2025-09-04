@@ -24,7 +24,7 @@ class CameraArray(PlottableInstrument):
 
     @classmethod
     def from_config(
-        cls, array_name
+        cls, array_name, camera_class=Camera
     ):  # TODO: make from_config a method of Instrument...?
         from arguslib.config import load_config
 
@@ -33,7 +33,7 @@ class CameraArray(PlottableInstrument):
         array_config = camera_arrays[array_name]
 
         cameras = [
-            Camera.from_config(array_config["campaign"], c)
+            camera_class.from_config(array_config["campaign"], c)
             for c in array_config["cameras"]
         ]
         # will ignore config if kwargs contains any of the keys in camera_config

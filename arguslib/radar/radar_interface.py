@@ -6,15 +6,17 @@ import datetime
 import matplotlib.pyplot as plt
 from pyart.util import datetime_from_radar
 import numpy as np
+from typing import TYPE_CHECKING
 
 from arguslib.instruments.instruments import PlottableInstrument
 from arguslib.protocols import ProvidesRadarScanTime
 
-from .radar import Radar
-from ..camera.camera import Camera
 from ..misc.plotting import TimestampedFigure
 
 from .radar_overlay_interface import RadarOverlayInterface
+
+if TYPE_CHECKING:
+    from .radar import Radar
 
 
 class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
@@ -33,7 +35,7 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
         camera (PlottableInstrument): The camera or other instrument to plot alongside the radar.
     """
 
-    def __init__(self, radar: Radar, camera: PlottableInstrument):
+    def __init__(self, radar: "Radar", camera: PlottableInstrument):
         self.radar = radar
         self.camera = camera
 
@@ -50,6 +52,9 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
 
     @classmethod
     def from_campaign(cls, campaign, camstr):
+        from .radar import Radar
+        from ..camera.camera import Camera
+
         return cls(
             Radar.from_config(campaign),
             Camera.from_config(campaign, camstr),

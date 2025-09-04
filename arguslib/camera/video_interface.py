@@ -1,11 +1,9 @@
 import datetime
 from typing import Tuple, Optional, Any
 
-from arguslib.aircraft.aircraft_interface import AircraftInterface
 import cv2
 import numpy as np
 
-from .direct_camera import DirectCamera
 from ..instruments.instruments import PlottableInstrument, Position
 from ..radar.radar_overlay_interface import (
     RadarOverlayInterface,
@@ -26,6 +24,8 @@ class VideoInterface(PlottableInstrument):
                         This includes `DirectCamera` and wrappers like `AircraftInterface`
                         or `RadarOverlayInterface` when they contain a `DirectCamera`.
         """
+        from arguslib.aircraft.aircraft_interface import AircraftInterface
+
         if not isinstance(instrument, DirectRenderable):
             raise TypeError(
                 f"Instrument of type {type(instrument).__name__} does not conform to the "

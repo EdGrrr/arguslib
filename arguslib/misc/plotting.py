@@ -2,6 +2,7 @@ from arguslib.instruments.instruments import Position
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from ..misc.geo import destination_point
 
 
 class TimestampedFigure(Figure):
@@ -13,33 +14,45 @@ class TimestampedFigure(Figure):
         Figure.__init__(self, *args, **kwargs)
 
 
-def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs):
+def plot_range_rings(
+    plotting_instrument,
+    center_instrument,
+    dt,
+    ranges=[10, 20, 30],
+    alt=10,
+    ax=None,
+    **kwargs,
+):
     """
-    Plots range rings on a camera image. Each ring is plotted in a separate
-    call to ensure they are not connected.
+    Plots range rings on a plottable instrument's axes.
+
+    Each ring is plotted in a separate call to ensure they are not connected.
+
+    Args:
+        plotting_instrument (PlottableInstrument): The instrument to plot on (e.g., MapInstrument, Camera).
+        center_instrument (Instrument): The instrument providing the center position for the rings.
+        dt (datetime): The datetime for the plot.
+        ranges (list): List of ranges in km.
+        alt (float): Altitude for the ring positions.
+        ax (Axes): The axes to plot on.
+        **kwargs: Keyword arguments for plotting.
     """
 
-    # This helper function calculates a destination lat/lon using spherical geometry
-    def calculate_destination_point(start_lon, start_lat, bearing_deg, distance_km):
-        R = 6371.0  # Average Earth radius in km
+    if hasattr(center_instrument, "cameras"):
+        label = kwargs.pop("label", None)
 
-        lat1_rad = np.deg2rad(start_lat)
-        lon1_rad = np.deg2rad(start_lon)
-        bearing_rad = np.deg2rad(bearing_deg)
-
-        d_div_R = distance_km / R
-
-        lat2_rad = np.arcsin(
-            np.sin(lat1_rad) * np.cos(d_div_R)
-            + np.cos(lat1_rad) * np.sin(d_div_R) * np.cos(bearing_rad)
-        )
-
-        lon2_rad = lon1_rad + np.arctan2(
-            np.sin(bearing_rad) * np.sin(d_div_R) * np.cos(lat1_rad),
-            np.cos(d_div_R) - np.sin(lat1_rad) * np.sin(lat2_rad),
-        )
-
-        return np.rad2deg(lon2_rad), np.rad2deg(lat2_rad)
+        for i, cam in enumerate(center_instrument.cameras):
+            plot_range_rings(
+                plotting_instrument,
+                cam,
+                dt,
+                ranges=ranges,
+                alt=alt,
+                ax=ax,
+                label=label if i == 0 else None,
+                **kwargs,
+            )
+        return ax
 
     plot_kwargs = {"c": "orange", "lw": 0.7} | kwargs
     azimuths_deg = np.arange(0, 361, 10)
@@ -47,8 +60,11 @@ def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs)
     # Loop to generate and plot each ring separately
     for rd in ranges:
         # Vectorized calculation for all points in a single ring
-        target_lons, target_lats = calculate_destination_point(
-            camera.position.lon, camera.position.lat, azimuths_deg, rd
+        target_lons, target_lats = destination_point(
+            center_instrument.position.lon,
+            center_instrument.position.lat,
+            azimuths_deg,
+            rd,
         )
 
         positions = [
@@ -56,14 +72,14 @@ def plot_range_rings(camera, dt, ranges=[10, 20, 30], alt=10, ax=None, **kwargs)
         ]
 
         # A single annotation call for each ring
-        camera.annotate_positions(
+        plotting_instrument.annotate_positions(
             positions,
             dt,
             ax=ax,
             **plot_kwargs,
         )
 
-    return {}
+    return ax
 
 
 def plot_beam(

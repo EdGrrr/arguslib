@@ -11,8 +11,6 @@ from ..misc.geo import ft_to_km
 from ..protocols import DirectRenderable, ProvidesRadarScanTime
 
 from ..instruments.instruments import PlottableInstrument
-from ..camera.camera import Camera
-from ..camera.direct_camera import DirectCamera
 from ..instruments import Position
 from .fleet import Fleet
 
@@ -73,6 +71,8 @@ class AircraftInterface(PlottableInstrument):
 
     @classmethod
     def from_campaign(cls, campaign, camstr):
+        from ..camera.camera import Camera
+
         return cls(
             Camera.from_config(campaign, camstr),
         )

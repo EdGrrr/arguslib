@@ -142,7 +142,7 @@ class DirectCamera(
         #     int
         # )
 
-        plot_range_rings(self, dt, ax=ax)
+        plot_range_rings(self, self, dt, ax=ax)
         # ax.imshow(img[:, :, ::-1], origin="upper", **imshow_kw)
 
         return None  # No ax for image
