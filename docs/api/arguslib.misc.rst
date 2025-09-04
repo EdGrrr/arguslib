@@ -12,6 +12,14 @@ arguslib.misc.geo module
    :show-inheritance:
    :undoc-members:
 
+arguslib.misc.interpolation module
+----------------------------------
+
+.. automodule:: arguslib.misc.interpolation
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 arguslib.misc.met module
 ------------------------
 
@@ -40,14 +48,6 @@ arguslib.misc.times module
 --------------------------
 
 .. automodule:: arguslib.misc.times
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: arguslib.misc
    :members:
    :show-inheritance:
    :undoc-members:

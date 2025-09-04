@@ -1,5 +1,6 @@
 # Sphinx documentation build output
 docs/_build/
+auto_examples
 
 # Python bytecode and cache
 __pycache__/
