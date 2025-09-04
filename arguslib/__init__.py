@@ -10,24 +10,25 @@ for easier access.
 """
 
 # --- Core Instrument and Geolocation Classes ---
-from .instruments.instruments import Position
+from .instruments import Position
 
 # --- Camera Classes ---
-from .camera.camera import Camera
-from .camera.undistorted_camera import UndistortedCamera
-from .camera.direct_camera import DirectCamera, DirectUndistortedCamera
-from .camera.camera_array import CameraArray
+from .camera import (
+    Camera,
+    UndistortedCamera,
+    DirectCamera,
+    DirectUndistortedCamera,
+    CameraArray,
+    VideoInterface,
+)
 
 # --- Radar Classes ---
-from .radar.radar import Radar
+from .radar import Radar, RadarInterface
 
 # --- Aircraft Classes ---
-from .aircraft.fleet import Fleet
-
-# --- High-Level Interface Classes ---
-from .aircraft.aircraft_interface import (
+from .aircraft import (
     AircraftInterface,
     AutomaticADSBAircraftInterface,
 )
-from .radar.radar_interface import RadarInterface
-from .camera.video_interface import VideoInterface
+from .aircraft import Fleet
+from .mapping import MapInstrument

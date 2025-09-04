@@ -11,6 +11,7 @@ Welcome to arguslib's documentation!
    :caption: Contents:
 
    user_guide
+   auto_examples/index
    api/modules
 
 

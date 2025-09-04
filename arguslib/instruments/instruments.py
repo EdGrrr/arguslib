@@ -1,12 +1,14 @@
 from matplotlib.axes import Axes
 
-from ..misc.geo import haversine, bearing
+from ..misc.geo import haversine, bearing, destination_point
 import numpy as np
 from pathlib import Path
 
 default_calibration_file = (
     Path(__file__).parent.parent / "instruments/cam1_calibration.yml"
 )
+
+EARTH_RADIUS_KM = 6371.0
 
 
 def ead_to_xyz(target_elevation, target_azimuth, target_distance):
@@ -140,14 +142,20 @@ class Position:
         target_alts = np.array([p.alt for p in targets])
 
         # Perform vectorized calculations
-        distance = haversine(self.lon, self.lat, target_lons, target_lats)
+        arc_distance_km = haversine(self.lon, self.lat, target_lons, target_lats)
+
+        # This is the straight-line distance through the Earth's crust
+        angular_dist_rad = arc_distance_km / EARTH_RADIUS_KM
+        chord_distance_km = 2 * EARTH_RADIUS_KM * np.sin(angular_dist_rad / 2)
+
+        alt_diff = target_alts - self.alt
+        target_distance = np.sqrt(chord_distance_km**2 + alt_diff**2)  # Slant range
+        target_elevation = np.rad2deg(np.arctan2(alt_diff, chord_distance_km))
+
         alt_diff = target_alts - self.alt
 
-        # Avoid division by zero for elevation calculation when distance is zero
-        distance_safe = np.where(distance == 0, 1e-9, distance)
-
-        target_distance = np.sqrt(distance**2 + alt_diff**2)
-        target_elevation = np.rad2deg(np.arctan2(alt_diff, distance_safe))
+        target_distance = np.sqrt(chord_distance_km**2 + alt_diff**2)
+        target_elevation = np.rad2deg(np.arctan2(alt_diff, chord_distance_km))
         target_azimuth = bearing(self.lon, self.lat, target_lons, target_lats)
 
         # Stack results into an (N, 3) array
@@ -163,7 +171,7 @@ class Position:
 
     def target_xyz(self, target_position):
         """
-        Calculates the relative X, Y, Z coordinates to a target position.
+        Calculates the East-North-Up Earth-relative, Earth-fixed X, Y, Z coordinates between this and a target position.
         Vectorized to handle a list of target positions.
         """
         # Check if input is a list or a single object
@@ -198,7 +206,6 @@ class Position:
         Converts elevation, azimuth, and distance to a new Position
         using a spherical Earth model. Handles elevations > 90 degrees.
         """
-        from ..misc.geo import destination_point
 
         # Normalize elevation and azimuth for cases where elevation > 90 degrees.
         # This maps "over-the-top" coordinates to their forward-facing equivalent.
@@ -223,10 +230,48 @@ class Position:
         return Position(new_lon.item(), new_lat.item(), new_alt.item())
 
     def xyz_to_lla(self, target_x, target_y, target_z):
-        # Assume Earth is locally flat, but also spherical
-        lon = self.lon + target_x / (111.111 * np.cos(np.deg2rad(self.lat)))
-        lat = self.lat + target_y / (111.111)
-        return Position(lon, lat, target_z + self.alt)
+        """Converts local ENU coordinates back to a global Position object(s).
+
+        This method inverts the target_xyz calculation using a spherical
+        Earth model. It is vectorized to handle NumPy arrays of coordinates,
+        in which case it will return a list of Position objects.
+
+        Args:
+            target_x (float or np.ndarray): East-West distance(s) in km.
+            target_y (float or np.ndarray): North-South distance(s) in km.
+            target_z (float or np.ndarray): Up-Down distance(s) in km.
+
+        Returns:
+            Position or list[Position]: The new geographical position object,
+            or a list of objects if the input was vectorized.
+        """
+        # Check if the input is vectorized by inspecting one of the arguments
+        is_vectorized = isinstance(target_x, (list, tuple, np.ndarray))
+
+        # These numpy calculations work correctly for both scalars and arrays
+        horiz_dist_km = np.sqrt(np.square(target_x) + np.square(target_y))
+        bearing_rad = np.arctan2(target_x, target_y)
+        bearing_deg = np.rad2deg(bearing_rad)
+        target_azimuth = (bearing_deg + 360) % 360
+
+        # This function should also be vectorized to handle array inputs efficiently
+        new_lons, new_lats = destination_point(
+            self.lon, self.lat, target_azimuth, horiz_dist_km
+        )
+
+        # Numpy's broadcasting handles scalar + array addition automatically
+        new_alts = self.alt + target_z
+
+        # If the input was vectorized, create a list of Position objects
+        if is_vectorized:
+            return [
+                Position(lon, lat, alt)
+                for lon, lat, alt in zip(new_lons, new_lats, new_alts)
+            ]
+        # Otherwise, create and return a single Position object
+        else:
+            # Using .item() safely extracts the scalar value if numpy returns a 0-dim array
+            return Position(new_lons.item(), new_lats.item(), new_alts.item())
 
     def __repr__(self):
         return f"{self.lon:.3f} {self.lat:.3f} {self.alt:.3f}"
