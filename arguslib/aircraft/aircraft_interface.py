@@ -239,6 +239,16 @@ class AircraftInterface(PlottableInstrument):
                 positions, dt, ax, **(acft_kwargs | trail_plot_args)
             )
 
+            self.camera.annotate_positions(
+                positions[-1:],
+                timestamp,
+                ax,
+                color="r",
+                marker="o",
+                markersize=2,
+                **trail_plot_args,
+            )
+
         if plotting_method == "intersect_plot":
 
             # here we need to chunk up the radar, get trails at different times, and plot those.
@@ -294,15 +304,15 @@ class AircraftInterface(PlottableInstrument):
                     if intersect_success:
                         plotted_icaos.append(acft)
 
-        self.camera.annotate_positions(
-            positions[-1:],
-            timestamp,
-            ax,
-            color="r",
-            marker="o",
-            markersize=2,
-            **trail_plot_args,
-        )
+            self.camera.annotate_positions(
+                positions[-1:],
+                timestamp,
+                ax,
+                color="r",
+                marker="o",
+                markersize=2,
+                **trail_plot_args,
+            )
 
     def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)
