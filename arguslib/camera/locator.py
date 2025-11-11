@@ -1,15 +1,12 @@
 # %%
 """Finds the closest image to the one required"""
 
-from arguslib.misc.times import convert_to_london_naive
-from csat2.locator import FileLocator
 import os
+import datetime as dtmod
+from csat2.locator import FileLocator
+from .sources import VideoFrameSource
 
-from .video import Video
-from zoneinfo import ZoneInfo
-
-from pytz import utc
-
+# The FileLocator format for the default MP4 video files
 video_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/videos/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}_{hour:0>2}{min:0>2}{second:0>2}_A.mp4"
 
 cal_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}T{hour:0>2}{min:0>2}{second:0>2}_CAL{im_index}.mp4"
@@ -17,74 +14,67 @@ cal_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2
 os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "0"  # suppress opencv warnings
 
 
-def initialise_locator():
-    locator = FileLocator()
-    locator.search_paths["ARGUS"] = {}
-    locator.search_paths["ARGUS"]["video"] = [video_filename_format]
-    locator.search_paths["ARGUS"]["cal"] = [cal_filename_format]
-    return locator
-
-
 class CameraData:
+    """
+    Default data loader for ARGUS cameras.
+    This loader finds and reads data from timestamped MP4 files.
+    """
+
     def __init__(self, campaign, camstr):
+        from csat2.locator import FileLocator  # keep existing behaviour
+
         self.campaign = campaign
         self.camstr = camstr
-        self.locator = initialise_locator()
+        self.locator = FileLocator()
+        self.locator.search_paths["ARGUS"] = {}
+        self.locator.search_paths["ARGUS"]["video"] = [video_filename_format]
+        self.locator.search_paths["ARGUS"]["cal"] = [cal_filename_format]
 
-        self.video = None
-        self.current_video_path = None
+        self._source = None
+        self._source_key = None  # (type, path)
 
-        self.image = None
-        self.current_image_time = None
+    def _select_source_for_dt(self, dt: dtmod.datetime):
+        """Finds the correct MP4 VideoFrameSource for the given datetime."""
+        mp4_path = self.get_video_file(dt)
 
-    def get_data_time(self, dt, return_timestamp=False):
-        filepath = self.get_video_file(dt)
-
-        if filepath is None:
+        if mp4_path is None:
             raise FileNotFoundError(
                 f"No camera {self.camstr} video file found for {dt}"
             )
 
-        if filepath != self.current_video_path:
-            self.video = Video(filepath)
-            self.current_video_path = filepath
+        key = ("mp4", mp4_path)
+        if self._source_key != key:
+            self._source = VideoFrameSource(mp4_path)
+            self._source_key = key
+        return self._source
 
+    def get_data_time(self, dt: dtmod.datetime, return_timestamp: bool = False):
+        """
+        Gets image data from the appropriate MP4 file at the nearest possible timestamp.
+        """
         try:
-            self.image, self.current_image_time = self.video.get_data_time(
-                dt, return_timestamp=True
-            )
-        except ValueError as e:
-            # Likely a "not in time bounds" error - happens when we are "between two frames"
-            # if we are at the start, return the first frame if its within a minute
-            if (
-                dt < self.video.time_bounds[0]
-                and (self.video.time_bounds[0] - dt).seconds < 60
-            ):
-                self.image, self.current_image_time = self.video.get_data_time(
-                    self.video.time_bounds[0], return_timestamp=True
-                )
-            # if we are at the end, return the last frame if its within a minute
-            elif (
-                dt > self.video.time_bounds[1]
-                and (dt - self.video.time_bounds[1]).seconds < 60
-            ):
-                self.image, self.current_image_time = self.video.get_data_time(
-                    self.video.time_bounds[1], return_timestamp=return_timestamp
-                )
-            else:
+            source = self._select_source_for_dt(dt)
+            data, timestamp = source.get_data_time(dt, return_timestamp=True)
+        except (FileNotFoundError, ValueError) as e:
+            # Re-raise FileNotFoundError, or catch "not in time bounds" ValueError
+            if isinstance(e, FileNotFoundError):
                 raise e
+            raise FileNotFoundError(
+                f"No video data for {self.camstr} at {dt}: {e}"
+            ) from e
 
-        if return_timestamp:
-            return self.image, self.current_image_time
-        else:
-            return self.image
+        if abs(timestamp - dt).total_seconds() > 180:
+            raise FileNotFoundError(
+                f"No image within 3 minute tolerance for {self.camstr} at {dt} (closest at {timestamp}). The nearest timestamp is {timestamp}."
+            )
+
+        if not return_timestamp:
+            return data
+        return data, timestamp
 
     def get_video_file(self, dt):
+        """Finds the local MP4 file path for a given datetime."""
         # dt is in utc.
-        # but (TEST) the files are **named** with local time?
-        # get dt object which is timezone naive but
-        # dt = dt.replace(hour=dt.hour-1)
-
         files = self.locator.search(
             "ARGUS",
             "video",
@@ -137,6 +127,7 @@ def is_mp4_file_corrupt(filepath):
     if not cap.isOpened():
         return True
     else:
+        cap.release()  # Release the file handle
         return False
 
 

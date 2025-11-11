@@ -19,6 +19,8 @@ from ..misc.plotting import (
     make_camera_axes,
     plot_range_rings,
 )
+from .loaders import get_data_loader_class
+from .locator import CameraData
 
 
 import numpy as np
@@ -50,6 +52,7 @@ class Camera(Instrument):
         scale_factor=1,
         camera_type="allsky",
         time_offset_s=0.0,
+        data_loader_class=None,
         **kwargs,
     ):
         self.intrinsic = intrinsic_calibration
@@ -67,6 +70,11 @@ class Camera(Instrument):
         self.time_offset_s = time_offset_s
 
         self.image_size_px = np.array(self.image_size_px) * scale_factor
+
+        if data_loader_class is None:
+            self._data_loader_class = CameraData
+        else:
+            self._data_loader_class = data_loader_class
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -82,6 +90,12 @@ class Camera(Instrument):
         cameras = load_config("cameras.yml")
 
         camera_config = cameras[campaign][camstr]
+
+        loader_name = camera_config.get("data_loader", campaign)
+
+        LoaderClass = get_data_loader_class(loader_name)
+
+        kwargs["data_loader_class"] = LoaderClass
 
         if "calibration_file" in camera_config:  # Then this is an allsky camera
             if camera_config["calibration_file"] is None:
@@ -214,7 +228,9 @@ class Camera(Instrument):
     def initialise_data_loader(self):
         from .locator import CameraData
 
-        self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
+        LoaderClass = self._data_loader_class
+
+        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"])
 
     @override
     def _show(
