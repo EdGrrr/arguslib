@@ -2,9 +2,7 @@
 import datetime as dt
 
 
-from arguslib.camera.camera_array import CameraArray
-from arguslib.camera.undistorted_camera import UndistortedCamera
-from arguslib.instruments.instruments import Position
+from arguslib import CameraArray, UndistortedCamera
 
 
 multicam2 = CameraArray(

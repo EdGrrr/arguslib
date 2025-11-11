@@ -3,12 +3,13 @@ interface classes to plot radar and aircraft data."""
 
 # %%
 import datetime
-from arguslib.aircraft import AircraftInterface
-from arguslib.radar.radar import Radar
-from arguslib.camera.camera_array import CameraArray
-from arguslib.camera.undistorted_camera import UndistortedCamera
-from arguslib.radar.radar_interface import RadarInterface
-
+from arguslib import (
+    AircraftInterface,
+    Radar,
+    CameraArray,
+    UndistortedCamera,
+    RadarInterface,
+)
 
 # %% Plotting the aircraft tracks on a single camera
 cai = AircraftInterface.from_campaign("COBALT", "3-7")

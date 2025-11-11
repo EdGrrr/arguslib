@@ -3,8 +3,7 @@ from matplotlib import pyplot as plt
 from arguslib.camera.camera import Camera
 import datetime
 
-from arguslib.instruments.instruments import Position
-from arguslib.radar.radar import Radar
+from arguslib import Position, Camera, Radar
 
 dt = datetime.datetime(2025, 3, 25, 9)
 

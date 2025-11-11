@@ -1,7 +1,6 @@
 import streamlit as st
 import datetime as dt
 from datetime import time
-import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import re
@@ -9,11 +8,8 @@ from pathlib import Path
 import random
 import calendar
 from collections import defaultdict
-import io
-from contextlib import redirect_stdout, redirect_stderr
 
-from arguslib.aircraft.aircraft_interface import AutomaticADSBAircraftInterface
-from arguslib.camera.direct_camera import DirectUndistortedCamera
+from arguslib import AutomaticADSBAircraftInterface, DirectUndistortedCamera
 
 # --- Important: Make sure arguslib is in your Python Path ---
 # You might need to do something like this at the start of your script

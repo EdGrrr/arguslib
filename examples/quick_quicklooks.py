@@ -4,15 +4,8 @@
 import datetime
 from pathlib import Path
 
-from arguslib.camera.camera import Camera
-
-from arguslib.aircraft import AircraftInterface
+from arguslib import AircraftInterface, RadarInterface, Radar, UndistortedCamera
 from arguslib.misc.geo import ft_to_km
-from arguslib.radar import RadarInterface
-from arguslib.radar.radar import Radar
-from arguslib.camera.camera_array import CameraArray
-
-from arguslib.camera.undistorted_camera import UndistortedCamera
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
 outdir = Path(__file__).parent / "output" / "camera_radar_quicklooks"
