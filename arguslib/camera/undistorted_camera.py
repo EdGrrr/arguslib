@@ -13,33 +13,33 @@ def _create_remap_arrays(
     """
     Pre-computes the x and y remap arrays for undistortion.
 
-    This function contains the expensive, one-off calculations.
+    output_shape must be (H, W).
     """
-    oh, ow = output_shape
-    cx, cy = principal_point
+    oh, ow = output_shape  # (height, width)
+    cx, cy = map(float, principal_point)
 
     # Guess focal length if not provided
     if focal_length is None:
-        # Use the linear coefficient as a rough estimate
-        focal_length = abs(poly_incident_angle_to_radius[1])
+        focal_length = abs(float(poly_incident_angle_to_radius[1]))
 
-    # Build meshgrid in undistorted (rectified) space
-    i, j = np.meshgrid(np.arange(ow), np.arange(oh))
+    # Grid in undistorted space, explicit xy indexing
+    x_idx = np.arange(ow, dtype=np.float64)
+    y_idx = np.arange(oh, dtype=np.float64)
+    i, j = np.meshgrid(x_idx, y_idx, indexing="xy")  # i: x, j: y
+
+    # Normalized rectified plane coords
     x = (i - cx) / focal_length
     y = (j - cy) / focal_length
 
-    # Unit direction vectors from optical center
+    # Unit direction vectors
     rays = np.stack([x, y, np.ones_like(x)], axis=-1)
     rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
 
-    # Compute θ = angle from optical axis
-    theta = np.arccos(rays[..., 2])
-
-    # Compute ρ = distorted radius via polynomial
+    # theta and rho
+    theta = np.arccos(np.clip(rays[..., 2], -1.0, 1.0))
     rho = np.polyval(poly_incident_angle_to_radius[::-1], theta)
 
-    # Project back to distorted image coordinates
-    # Handle the case where rays are straight ahead to avoid division by zero
+    # Back to distorted pixels
     ray_xy_norm = np.linalg.norm(rays[..., :2], axis=-1, keepdims=True)
     ray_xy_unit = np.divide(
         rays[..., :2],
@@ -47,14 +47,14 @@ def _create_remap_arrays(
         out=np.zeros_like(rays[..., :2]),
         where=(ray_xy_norm != 0),
     )
-
     distorted_xy = ray_xy_unit * rho[..., np.newaxis]
-    distorted_xy += np.array(principal_point)
+    distorted_xy += np.array([cx, cy], dtype=np.float64)
 
-    # Return the remap arrays
     map_x = distorted_xy[..., 0].astype(np.float32)
     map_y = distorted_xy[..., 1].astype(np.float32)
 
+    # Sanity: maps must be (H, W)
+    assert map_x.shape == (oh, ow) and map_y.shape == (oh, ow)
     return map_x, map_y
 
 
@@ -73,18 +73,14 @@ class UndistortedCamera(Camera):
         self.reverse_y = False
         self.reverse_x = False
 
-        # --- OPTIMIZATION ---
-        # Pre-compute the remap arrays. We assume the output shape is the same
-        # as the camera's native shape. You might need to adjust self.shape.
-        # For example, use self.intrinsic.image_shape if available.
-        output_shape = (
-            self.image_size_px
-        )  # Assumes self.shape exists from the base Camera class
-        focal_length = self.intrinsic.focal_length
-        principal_point = self.intrinsic.principal_point
-
+        # Build remap arrays with (H, W)
+        W, H = map(int, self.image_size_px)  # self.image_size_px is [W, H]
+        output_shape = (H, W)
         self._remap_x, self._remap_y = _create_remap_arrays(
-            output_shape, self.poly_thetar, principal_point, focal_length
+            output_shape,
+            self.poly_thetar,
+            self.intrinsic.principal_point,
+            self.intrinsic.focal_length,
         )
 
     def get_data_time(self, *args, **kwargs):
