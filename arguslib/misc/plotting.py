@@ -1,8 +1,11 @@
 from arguslib.instruments.instruments import Position
-import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from ..misc.geo import destination_point
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import transforms
+from datetime import timezone  # added
 
 
 class TimestampedFigure(Figure):
@@ -60,15 +63,18 @@ def plot_range_rings(
     # Loop to generate and plot each ring separately
     for rd in ranges:
         # Vectorized calculation for all points in a single ring
-        target_lons, target_lats = destination_point(
-            center_instrument.position.lon,
-            center_instrument.position.lat,
-            azimuths_deg,
-            rd,
-        )
+        # target_lons, target_lats = destination_point(
+        #     center_instrument.position.lon,
+        #     center_instrument.position.lat,
+        #     azimuths_deg,
+        #     rd,
+        # )
+        elev = np.rad2deg(np.arctan2(alt, rd))  # in degrees
+        dist = np.sqrt(rd**2 + alt**2)
 
         positions = [
-            Position(lon, lat, alt) for lon, lat in zip(target_lons, target_lats)
+            center_instrument.position.ead_to_lla(elev, azimuth, dist)
+            for azimuth in azimuths_deg
         ]
 
         # A single annotation call for each ring
@@ -131,35 +137,36 @@ def plot_beam(
 
 def get_pixel_transform(camera, ax, lr_flip=True):
     from matplotlib.transforms import Affine2D
+    import numpy as np
+    from arguslib.instruments.instruments import rotation_matrix_i_to_g
+    from arguslib.camera.calibration import unit
 
-    # img_size_px = 3040 * camera.scale_factor
     principal_point = camera.intrinsic.principal_point
+    cx, cy = principal_point
 
-    translation_px = (
-        camera.image_size_px[0] / 2 - principal_point[0],
-        camera.image_size_px[1] / 2 - principal_point[1],
-    )
+    top_bearing_deg = camera.get_bearing_to_image_top()
+
+    w, h = camera.image_size_px
+    min_side = min(w, h)
+
+    # Translate so principal point maps to the center of the square [0, min_side]^2
+    translation_px = (min_side / 2 - cx, min_side / 2 - cy)
+    # I don't really know why this is relative to min_side / 2 rather than w / 2, h / 2,
+    # but it is necessary to get the right alignment.
+    # I think the logic is to do with the scaling.
 
     transPixel = (
-        Affine2D()
-        .translate(*translation_px)
-        .scale(1 / camera.image_size_px[0], 1 / camera.image_size_px[1])
-        .rotate_deg_around(0.5, 0.5, -1 * camera.rotation[-1])
+        Affine2D().translate(*translation_px)
+        # Uniform scale by the lesser side to preserve aspect ratio
+        .scale(1 / min_side, 1 / min_side)
+        # Rotate so that local image-top aligns with North (polar 0°)
+        .rotate_deg_around(0.5, 0.5, -top_bearing_deg)
     )
 
     try:
-        if (
-            not lr_flip
-        ):  # can't figure out why this needs doing to gett the unflipped version.
-            # seems to be that the default is to flip it for polar plots??
+        if not lr_flip:
             transPixel = transPixel + Affine2D().scale(-1, 1).translate(1, 0)
-        elif (ax.get_theta_direction() == np.pi / 2) and (
-            ax.get_theta_direction() == -1
-        ):
-            # bearing axes, so should have been flipped
-            print * ("Warning: bearing axes require flipped projection to be accurate")
     except AttributeError:
-        # non-polar axes
         pass
 
     transPixel = transPixel + ax.transAxes
