@@ -238,3 +238,133 @@ def get_timestamp_from_ax(ax):
             return timestamp
         except TypeError:
             return None
+
+
+# --- Solar position helpers (NOAA/SPA-style approximation) ---
+def _wrap_deg(x):
+    return (x % 360.0 + 360.0) % 360.0
+
+
+def _jd_utc(dt):
+    # Expect UTC; if tz-aware convert to UTC, else assume already UTC
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    year = dt.year
+    month = dt.month
+    day = dt.day
+    hour = dt.hour
+    minute = dt.minute
+    second = dt.second + dt.microsecond / 1e6
+
+    a = (14 - month) // 12
+    y = year + 4800 - a
+    m = month + 12 * a - 3
+    jdn = day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
+    day_frac = (hour - 12) / 24 + minute / 1440 + second / 86400
+    return jdn + day_frac
+
+
+def _solar_alt_az(dt, lat_deg, lon_deg):
+    # Based on NOAA/SPA approximations, good to ~0.01 deg
+    jd = _jd_utc(dt)
+    T = (jd - 2451545.0) / 36525.0
+
+    L0 = _wrap_deg(280.46646 + 36000.76983 * T + 0.0003032 * T * T)  # mean long
+    M = _wrap_deg(357.52911 + 35999.05029 * T - 0.0001537 * T * T)  # mean anomaly
+    e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T  # eccentricity
+
+    M_rad = np.deg2rad(M)
+    C = (
+        (1.914602 - 0.004817 * T - 0.000014 * T * T) * np.sin(M_rad)
+        + (0.019993 - 0.000101 * T) * np.sin(2 * M_rad)
+        + 0.000289 * np.sin(3 * M_rad)
+    )
+    true_long = L0 + C
+    Omega = 125.04 - 1934.136 * T
+    lambda_app = true_long - 0.00569 - 0.00478 * np.sin(np.deg2rad(Omega))
+
+    # Obliquity
+    eps0 = (
+        23.0
+        + 26.0 / 60.0
+        + 21.448 / 3600.0
+        - (46.8150 / 3600.0) * T
+        - (0.00059 / 3600.0) * T * T
+        + (0.001813 / 3600.0) * T * T * T
+    )
+    eps = eps0 + 0.00256 * np.cos(np.deg2rad(Omega))
+
+    # RA/Dec
+    lam_rad = np.deg2rad(lambda_app)
+    eps_rad = np.deg2rad(eps)
+    sin_lam = np.sin(lam_rad)
+    cos_lam = np.cos(lam_rad)
+    sin_eps = np.sin(eps_rad)
+    cos_eps = np.cos(eps_rad)
+
+    alpha = np.rad2deg(np.arctan2(cos_eps * sin_lam, cos_lam))  # degrees
+    alpha = _wrap_deg(alpha)
+    delta = np.rad2deg(np.arcsin(sin_eps * sin_lam))  # degrees
+
+    # Sidereal time (GMST) -> LST
+    GMST = _wrap_deg(
+        280.46061837
+        + 360.98564736629 * (jd - 2451545.0)
+        + 0.000387933 * T * T
+        - (T**3) / 38710000.0
+    )
+    LST = _wrap_deg(GMST + lon_deg)
+
+    # Hour angle
+    H = _wrap_deg(LST - alpha)
+    if H > 180:
+        H -= 360.0
+
+    # Convert to alt/az
+    lat_rad = np.deg2rad(lat_deg)
+    dec_rad = np.deg2rad(delta)
+    H_rad = np.deg2rad(H)
+
+    sin_alt = np.sin(lat_rad) * np.sin(dec_rad) + np.cos(lat_rad) * np.cos(
+        dec_rad
+    ) * np.cos(H_rad)
+    alt_rad = np.arcsin(sin_alt)
+
+    # Azimuth from North, clockwise
+    y = np.sin(H_rad)
+    x = np.cos(H_rad) * np.sin(lat_rad) - np.tan(dec_rad) * np.cos(lat_rad)
+    az_rad = np.arctan2(y, x)
+    az_deg = _wrap_deg(
+        np.rad2deg(az_rad) + 180.0
+    )  # shift from South-based to North-based
+
+    alt_deg = np.rad2deg(alt_rad)
+
+    # Optional: simple atmospheric refraction correction (sea level)
+    if alt_deg > -1.0:
+        R = 1.02 / np.tan(np.deg2rad(alt_deg + 10.3 / (alt_deg + 5.11))) / 60.0
+        alt_deg += R
+
+    return alt_deg, az_deg
+
+
+# --- end helpers ---
+
+
+def show_the_sun(ax, camera, **kwargs):
+    dt = ax.get_figure().timestamp
+
+    lat = camera.position.lat
+    lon = camera.position.lon
+
+    sun_elevation, sun_azimuth = _solar_alt_az(dt, lat, lon)
+
+    solar_position_approx = camera.position.ead_to_lla(sun_elevation, sun_azimuth, 1)
+
+    camera.annotate_positions(
+        [solar_position_approx],
+        dt,
+        ax=ax,
+        **kwargs,
+    )
+    return ax
