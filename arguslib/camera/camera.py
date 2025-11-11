@@ -329,6 +329,9 @@ class Camera(Instrument):
             ax.set_rticks([])
 
         ax.grid(False)
+        if is_polar:
+            ax.set_rticks([])
+        ax.grid(False)
 
         plot_range_rings(self, self, dt, ax=ax)
 
@@ -344,14 +347,16 @@ class Camera(Instrument):
             else:
                 return ax
 
-        # new_vmin = np.round(brightness_adjust * 255)
         img = np.clip(np.uint16(img) * brightness_adjust, 0, 255).astype(np.uint8)
-        # img[img <= new_vmin] = new_vmin
-        # img = np.round(255 * (img.astype(float) - new_vmin) / (255 - new_vmin)).astype(
-        #     int
-        # )
 
-        ax.imshow(img[:, :, ::-1], origin="upper", **imshow_kw)
+        # Draw the image in pixel coordinates with correct extent and aspect
+        # Note: origin='upper' because pixel (0,0) is top-left
+        ax.imshow(
+            img[:, :, ::-1],
+            origin="upper",
+            aspect="equal",
+            **imshow_kw,
+        )
 
         return ax
 
