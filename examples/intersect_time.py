@@ -1,12 +1,11 @@
 # %%
 import datetime as dt
-from arguslib.camera.camera import Camera
-from arguslib.camera.direct_camera import DirectUndistortedCamera
-from arguslib.camera.undistorted_camera import UndistortedCamera
-from arguslib.camera.video_interface import VideoInterface
-from arguslib.radar.radar import Radar
-from arguslib.aircraft.aircraft_interface import AutomaticADSBAircraftInterface
-from arguslib.radar.radar_interface import RadarInterface
+from arguslib import (
+    UndistortedCamera,
+    Radar,
+    AutomaticADSBAircraftInterface,
+    RadarInterface,
+)
 
 cam = UndistortedCamera.from_config("COBALT", "3-7")
 rad = Radar.from_config("COBALT")

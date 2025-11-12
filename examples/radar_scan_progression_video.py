@@ -2,9 +2,8 @@
 import datetime
 from pathlib import Path
 
-from arguslib.camera.direct_camera import DirectUndistortedCamera
+from arguslib import DirectUndistortedCamera, VideoInterface
 from arguslib.radar.radar_overlay_interface import RadarOverlayInterface
-from arguslib.camera.video_interface import VideoInterface
 
 # --- Configuration ---
 campaign = "COBALT"

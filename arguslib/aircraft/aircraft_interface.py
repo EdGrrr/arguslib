@@ -1,9 +1,8 @@
+from matplotlib.lines import Line2D
 import numpy as np
 import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
-
-import pytz
 
 from arguslib.misc.plotting import get_timestamp_from_ax
 
@@ -239,6 +238,16 @@ class AircraftInterface(PlottableInstrument):
                 positions, dt, ax, **(acft_kwargs | trail_plot_args)
             )
 
+            self.camera.annotate_positions(
+                positions[-1:],
+                timestamp,
+                ax,
+                color="r",
+                marker="o",
+                markersize=2,
+                **trail_plot_args,
+            )
+
         if plotting_method == "intersect_plot":
 
             # here we need to chunk up the radar, get trails at different times, and plot those.
@@ -294,15 +303,37 @@ class AircraftInterface(PlottableInstrument):
                     if intersect_success:
                         plotted_icaos.append(acft)
 
-        self.camera.annotate_positions(
-            positions[-1:],
-            timestamp,
-            ax,
-            color="r",
-            marker="o",
-            markersize=2,
-            **trail_plot_args,
-        )
+            self.camera.annotate_positions(
+                positions[-1:],
+                timestamp,
+                ax,
+                color="r",
+                marker="o",
+                markersize=2,
+                **trail_plot_args,
+            )
+
+        ax.get_figure().canvas.draw()
+
+        boundary_path = ax.patch.get_path()
+        transform = ax.patch.get_transform()
+        transformed_boundary = boundary_path.transformed(transform)
+        # data_bbox = Bbox.from_bounds(*transformed_boundary.get_extents().bounds)
+
+        artists = ax.get_children()
+        trail_artists = [
+            a
+            for a in artists
+            if isinstance(a, Line2D)
+            and a.get_label()
+            != "_nolegend_"  # Exclude behind the scenes lines (like axis lines)
+        ]
+        for artist in trail_artists:
+            artist_bbox = artist.get_window_extent()
+
+            # Check for intersection with the precise boundary path
+            if not transformed_boundary.intersects_bbox(artist_bbox):
+                artist.remove()
 
     def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)

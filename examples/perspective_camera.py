@@ -1,14 +1,9 @@
 # %%
 
 from datetime import datetime
-from argusflightserver.fleet import Aircraft
-from arguslib.aircraft.aircraft_interface import AircraftInterface
-from arguslib.camera.calibration import PerspectiveProjection, focal_length_px
-from arguslib.instruments.instruments import Position
-from arguslib.camera.camera import Camera
-from arguslib.camera.locator import CameraData
-import matplotlib.pyplot as plt
 from pathlib import Path
+
+from arguslib import AircraftInterface, Camera
 
 dt = datetime(2025, 4, 2, 9, 50)
 

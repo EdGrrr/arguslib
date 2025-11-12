@@ -1,7 +1,7 @@
 # %%
 import datetime
 from pathlib import Path
-from arguslib.aircraft.aircraft_interface import AircraftInterface
+from arguslib import AircraftInterface
 
 int = AircraftInterface.from_campaign("COBALT", "3-7")
 dt = datetime.datetime(2025, 3, 9)

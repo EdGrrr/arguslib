@@ -142,13 +142,13 @@ class AircraftPos:
             wind_u = (
                 pd.Series(wind_u)
                 .rolling(window=int(wind_filter), min_periods=1, center=True)
-                .mean()
+                .median()
                 .to_numpy()
             )
             wind_v = (
                 pd.Series(wind_v)
                 .rolling(window=int(wind_filter), min_periods=1, center=True)
-                .mean()
+                .median()
                 .to_numpy()
             )
 
@@ -216,16 +216,32 @@ class AircraftPos:
 
         return pos
 
-    def get_heading(self, dtime):
+    def get_heading(self, dtime, advection_winds="none", **kwargs):
         daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
         offset = daysec % self.time_resolution
         index = daysec // self.time_resolution
 
         daysec_us = daysec + dtime.microsecond * 1e-6
 
-        time = (daysec_us - self.times)[index : index + 2]  # time before and after
-        lon = self.positions[index : index + 2, self.variables.index("lon")]
-        lat = self.positions[index : index + 2, self.variables.index("lat")]
+        if advection_winds == "none":
+            lon = self.positions[index : index + 2, self.variables.index("lon")]
+            lat = self.positions[index : index + 2, self.variables.index("lat")]
+        else:
+            trail = self.get_trail(
+                dtime,
+                tlen=60,
+                winds=advection_winds,
+                include_time=True,
+                **kwargs,
+            )
+            last_time = trail[2, -1]
+            if last_time != 0:
+                current_pos = self.interpolate_position(dtime)
+                lon = np.array([trail[0, -1], current_pos[0]])
+                lat = np.array([trail[1, -1], current_pos[1]])
+            else:
+                lon = trail[0, -2:]
+                lat = trail[1, -2:]
 
         if np.any(np.isnan(lon)) or np.any(np.isnan(lat)):
             return np.nan
@@ -418,7 +434,9 @@ class Fleet:
         acft_types = {}
         with open(filename + ".txt", "r") as metafile:
             for line in metafile.readlines():
-                acft, atype = line.strip().split(" ")
+                splitted = line.strip().split(" ")
+                acft = splitted[0]
+                atype = splitted[1]
                 acft_list.append(acft)
                 acft_types[acft] = atype
 
@@ -517,6 +535,9 @@ class Fleet:
 
         Currently uses aircraft wind - I don't think this is accurate when the aircraft is climbing of descending
         """
+        if winds == "none":
+            # do not advect at all
+            return self.get_tracks(dtime, tlen, include_time=include_time)
         if (winds == "era5") and (
             ("uwind" not in self.variables) or (not self.has_notnull_data("uwind"))
         ):

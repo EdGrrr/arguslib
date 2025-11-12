@@ -29,3 +29,6 @@ dist/
 
 output
 scratch
+
+*.mp4
+*.png

@@ -1,7 +1,5 @@
 # %%
-from arguslib.instruments.direct_camera import DirectUndistortedCamera
-from arguslib.aircraft import AircraftInterface
-from arguslib.instruments.video_interface import VideoInterface  # Import the new class
+from arguslib import DirectUndistortedCamera, VideoInterface, AircraftInterface
 import datetime
 from pathlib import Path
 

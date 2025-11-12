@@ -19,6 +19,8 @@ from ..misc.plotting import (
     make_camera_axes,
     plot_range_rings,
 )
+from .loaders import get_data_loader_class
+from .locator import CameraData
 
 
 import numpy as np
@@ -49,16 +51,30 @@ class Camera(Instrument):
         *args,
         scale_factor=1,
         camera_type="allsky",
+        time_offset_s=0.0,
+        data_loader_class=None,
         **kwargs,
     ):
         self.intrinsic = intrinsic_calibration
         self.scale_factor = scale_factor
         self.camera_type = camera_type
 
-        self.image_size_px = (
-            [4608, 2592] if self.camera_type == "perspective" else [3040, 3040]
-        )
+        config_img_size = kwargs.pop("image_size_px", None)
+        if config_img_size is not None:
+            self.image_size_px = np.array(config_img_size)
+        else:
+            self.image_size_px = (
+                [4608, 2592] if self.camera_type == "perspective" else [3040, 3040]
+            )
+
+        self.time_offset_s = time_offset_s
+
         self.image_size_px = np.array(self.image_size_px) * scale_factor
+
+        if data_loader_class is None:
+            self._data_loader_class = CameraData
+        else:
+            self._data_loader_class = data_loader_class
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -75,21 +91,40 @@ class Camera(Instrument):
 
         camera_config = cameras[campaign][camstr]
 
+        loader_name = camera_config.get("data_loader", campaign)
+
+        LoaderClass = get_data_loader_class(loader_name)
+
+        kwargs["data_loader_class"] = LoaderClass
+
         if "calibration_file" in camera_config:  # Then this is an allsky camera
             if camera_config["calibration_file"] is None:
                 camera_config["calibration_file"] = default_calibration_file
-            kwargs = {
-                "filename": Path(camera_config["calibration_file"])
-                .expanduser()
-                .absolute(),
-                "position": Position(*camera_config["position"]),
-                "rotation": camera_config["rotation"],
-            } | kwargs  # will ignore config if kwargs contains any of the keys in camera_config
+            # Propagate image_size_px if provided (expected order: [width, height])
+            img_size = camera_config.get("image_size_px", None)
+
+            time_offset_s = camera_config.get("time_offset_s", 0.0)
+
+            kwargs = (
+                {
+                    "filename": Path(camera_config["calibration_file"])
+                    .expanduser()
+                    .absolute(),
+                    "position": Position(*camera_config["position"]),
+                    "rotation": camera_config["rotation"],
+                    "time_offset_s": time_offset_s,
+                }
+                | ({"image_size_px": img_size} if img_size is not None else {})
+                | kwargs
+            )
 
             kwargs |= {"campaign": campaign, "camstr": camstr}
             return cls.from_filename(**kwargs)
 
         else:  # Then this is a perspective camera
+            # Propagate image_size_px if provided (expected order: [width, height])
+            img_size = camera_config.get("image_size_px", None)
+
             kwargs |= {"campaign": campaign, "camstr": camstr}
             return cls(
                 PerspectiveProjection(
@@ -100,6 +135,7 @@ class Camera(Instrument):
                 position=Position(*camera_config["position"]),
                 rotation=camera_config["rotation"],
                 camera_type="perspective",
+                **({"image_size_px": img_size} if img_size is not None else {}),
                 **kwargs,
             )
 
@@ -122,7 +158,7 @@ class Camera(Instrument):
 
     def pix_to_iead(self, pix_x, pix_y, distance=None, altitude=None):
         xyz = self.intrinsic.image_to_view(
-            [pix_x * self.scale_factor, pix_y * self.scale_factor]
+            np.array([pix_x * self.scale_factor, pix_y * self.scale_factor]).T,
         )
 
         uv = unit(xyz)
@@ -134,8 +170,10 @@ class Camera(Instrument):
             final_xyz = uv * dist
             # xyz_to_ead returns [elevation_from_plane, azimuth, distance]
             ead = xyz_to_ead(*final_xyz)
-            # Convert elevation: 90 degrees - angle_from_xy_plane = angle_from_z_axis
+            # Elevation: 90° - angle_from_xy_plane = angle_from_z_axis
             ead[0] = 90.0 - ead[0]
+            # Azimuth: shift so 0° is at image-top (instead of +X/right)
+            # ead[1] = (ead[1] + 90.0) % 360.0
             return ead
 
         if distance is not None and altitude is None:
@@ -152,13 +190,25 @@ class Camera(Instrument):
         else:
             raise ValueError("Cannot specify both distance and altitude.")
 
+    def get_bearing_to_image_top(self):
+        # Use instrument -Y (image-top) rotated to global to determine bearing
+        R_i_to_g = rotation_matrix_i_to_g(*self.rotation)
+        dir_i_top = np.array([0.0, 1.0, 0.0])  # image-top in instrument frame
+        dir_g = unit(R_i_to_g @ dir_i_top).ravel()
+
+        # Bearing from North, clockwise: atan2(East, North); +90° per your convention
+        top_bearing_deg = (np.degrees(np.arctan2(dir_g[0], dir_g[1])) + 360.0) % 360.0
+        # want to remove the +90.
+        return top_bearing_deg
+
     def iead_to_pix(self, elevation, azimuth, dist=10):
-        # This function is naturally vectorized because it relies on NumPy operations.
         # Convert elevation: angle_from_xy_plane = 90 degrees - angle_from_z_axis
         elevation_for_xyz = 90.0 - elevation
+        # Undo the 90° top-zero shift
+        azimuth_for_xyz = (np.asarray(azimuth)) % 360.0
 
         view_vector = ead_to_xyz(
-            elevation_for_xyz, azimuth, dist
+            elevation_for_xyz, azimuth_for_xyz, dist
         ).T  # ead_to_xyz seems to transpose them...
 
         # Transpose view_vector to (N, 3) before passing to the projection function
@@ -178,7 +228,9 @@ class Camera(Instrument):
     def initialise_data_loader(self):
         from .locator import CameraData
 
-        self.data_loader = CameraData(self.attrs["campaign"], self.attrs["camstr"])
+        LoaderClass = self._data_loader_class
+
+        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"])
 
     @override
     def _show(
@@ -277,27 +329,34 @@ class Camera(Instrument):
             ax.set_rticks([])
 
         ax.grid(False)
+        if is_polar:
+            ax.set_rticks([])
+        ax.grid(False)
 
         plot_range_rings(self, self, dt, ax=ax)
 
         try:
             img, timestamp = self.get_data_time(dt, return_timestamp=True)
             if allow_timestamp_updates:
-                ax.get_figure().timestamp = timestamp
+                ax.get_figure().timestamp = timestamp + datetime.timedelta(
+                    seconds=self.time_offset_s
+                )
         except FileNotFoundError as e:
             if fail_if_no_data:
                 raise e
             else:
                 return ax
 
-        # new_vmin = np.round(brightness_adjust * 255)
         img = np.clip(np.uint16(img) * brightness_adjust, 0, 255).astype(np.uint8)
-        # img[img <= new_vmin] = new_vmin
-        # img = np.round(255 * (img.astype(float) - new_vmin) / (255 - new_vmin)).astype(
-        #     int
-        # )
 
-        ax.imshow(img[:, :, ::-1], origin="upper", **imshow_kw)
+        # Draw the image in pixel coordinates with correct extent and aspect
+        # Note: origin='upper' because pixel (0,0) is top-left
+        ax.imshow(
+            img[:, :, ::-1],
+            origin="upper",
+            aspect="equal",
+            **imshow_kw,
+        )
 
         return ax
 
@@ -309,7 +368,6 @@ class Camera(Instrument):
         Annotates one or more geographical positions on the camera image.
         This version is vectorized for performance.
         """
-        # **THE FIX**: Check for list, tuple, or numpy array, and check for length.
         if not isinstance(positions, (list, tuple, np.ndarray)) or len(positions) == 0:
             return ax
 
@@ -329,7 +387,7 @@ class Camera(Instrument):
             dists = np.array([dists]) if np.isscalar(dists) else dists
 
         # --- Vectorized Pixel Conversion ---
-        pl_track = self.iead_to_pix(ieads[:, 0], ieads[:, 1], ieads[:, 2])
+        pl_track = self.target_pix(positions)
 
         # --- Filtering and Plotting ---
         behind_camera = ieads[:, 0] > 90
