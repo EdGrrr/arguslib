@@ -131,9 +131,13 @@ class AircraftInterface(PlottableInstrument):
                 f"or {adsb_file_path_base.with_suffix('.txt')}"
             )
 
+        current_loaded_file = self.fleet.loaded_file
         self.fleet.load_output(str(adsb_file_path_base))
 
-        if not self.fleet.has_notnull_data("uwind"):
+        if (
+            not self.fleet.has_notnull_data("uwind")
+            and self.fleet.loaded_file != current_loaded_file
+        ):
             print("Attempting to assign ERA5 wind data to fleet...")
             try:
                 self.fleet.assign_era5_winds()  # This method has its own error handling and print statements
