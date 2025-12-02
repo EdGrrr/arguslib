@@ -80,6 +80,7 @@ class AircraftInterface(PlottableInstrument):
         self,
         date_or_dt: Union[datetime.date, datetime.datetime],
         adsb_data_dir: Union[str, Path] = None,
+        force_reload: bool = False,
     ):
         """
         Loads ADS-B flight data for the specified date from the given directory
@@ -131,9 +132,13 @@ class AircraftInterface(PlottableInstrument):
                 f"or {adsb_file_path_base.with_suffix('.txt')}"
             )
 
-        self.fleet.load_output(str(adsb_file_path_base))
+        current_loaded_file = self.fleet.loaded_file
+        self.fleet.load_output(str(adsb_file_path_base), force_reload=force_reload)
 
-        if not self.fleet.has_notnull_data("uwind"):
+        if force_reload or (
+            not self.fleet.has_notnull_data("uwind")
+            and self.fleet.loaded_file != current_loaded_file
+        ):
             print("Attempting to assign ERA5 wind data to fleet...")
             try:
                 self.fleet.assign_era5_winds()  # This method has its own error handling and print statements
