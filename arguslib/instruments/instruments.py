@@ -2,11 +2,6 @@ from matplotlib.axes import Axes
 
 from ..misc.geo import haversine, bearing, destination_point
 import numpy as np
-from pathlib import Path
-
-default_calibration_file = (
-    Path(__file__).parent.parent / "instruments/cam1_calibration.yml"
-)
 
 EARTH_RADIUS_KM = 6371.0
 

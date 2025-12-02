@@ -8,7 +8,6 @@ from .calibration import PerspectiveProjection, Projection, unit
 from ..instruments.instruments import (
     Instrument,
     Position,
-    default_calibration_file,
     ead_to_xyz,
     xyz_to_ead,
     rotation_matrix_i_to_g,
@@ -28,6 +27,19 @@ from tqdm import trange
 
 from pathlib import Path
 from typing_extensions import override
+import importlib.resources as il_res
+from ..config import resolve_config_resource
+
+DEFAULT_CALIBRATION_NAME = "cobalt_3-7_calibration.yml"
+
+
+def _resolve_calibration_resource(spec) -> object:
+    """
+    Resolve a calibration spec (None, str, or Path) using config.py helpers.
+    """
+    if spec is None:
+        return resolve_config_resource(DEFAULT_CALIBRATION_NAME)
+    return resolve_config_resource(spec)
 
 
 class Camera(Instrument):
@@ -79,7 +91,16 @@ class Camera(Instrument):
 
     @classmethod
     def from_filename(cls, filename, *args, **kwargs):
-        return cls(Projection.fromfile(filename), *args, **kwargs)
+        """
+        Accepts either a filesystem Path/str or an importlib.resources Traversable.
+        """
+        # Check for Traversable-like object (has open/joinpath) from importlib.resources
+        if hasattr(filename, "open") and hasattr(filename, "joinpath"):
+            # Use as_file to materialize on filesystem if needed
+            with il_res.as_file(filename) as tmp_path:
+                return cls(Projection.fromfile(tmp_path), *args, **kwargs)
+        # Otherwise treat as filesystem path
+        return cls(Projection.fromfile(Path(filename)), *args, **kwargs)
 
     @classmethod
     def from_config(
@@ -98,8 +119,10 @@ class Camera(Instrument):
         kwargs["data_loader_class"] = LoaderClass
 
         if "calibration_file" in camera_config:  # Then this is an allsky camera
-            if camera_config["calibration_file"] is None:
-                camera_config["calibration_file"] = default_calibration_file
+            # Resolve calibration file across config locations and packaged defaults
+            calib_resource = _resolve_calibration_resource(
+                camera_config.get("calibration_file")
+            )
             # Propagate image_size_px if provided (expected order: [width, height])
             img_size = camera_config.get("image_size_px", None)
 
@@ -107,9 +130,7 @@ class Camera(Instrument):
 
             kwargs = (
                 {
-                    "filename": Path(camera_config["calibration_file"])
-                    .expanduser()
-                    .absolute(),
+                    "filename": calib_resource,
                     "position": Position(*camera_config["position"]),
                     "rotation": camera_config["rotation"],
                     "time_offset_s": time_offset_s,

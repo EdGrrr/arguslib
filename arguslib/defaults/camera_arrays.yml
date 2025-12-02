@@ -1,0 +1,9 @@
+COBALTArray:
+  campaign: "COBALT"
+  cameras:
+    - "3-7"
+    - "5-1"
+    - "5-2"
+    - "5-3"
+    - "5-4"
+  layout_shape: [3, 3]

@@ -1,0 +1,37 @@
+---
+# Config for cameras
+# A dictionary of campaign names, each with a dictionary of camera names
+# Each camera has a calibration file, position and rotation
+# The calibration file is the path to the camera calibration file, if null,
+# the default file will be used.
+
+COBALT:
+    3-7:
+        calibration_file: cobalt_3-7_calibration.yml
+        position: [-1.439252, 51.146668, 0.1]
+        rotation: 15
+    3-8:
+        calibration_file: null
+        position: [-1.438511, 51.149064, 0.1]
+        rotation: 160
+    5-1:
+        calibration_file: null
+        position: [-1.363346, 50.952369, 0.1]
+        rotation: 70
+    5-2:
+        calibration_file: null
+        position: [-1.141453, 51.147445, 0.1]
+        rotation: -80
+    5-3:
+        calibration_file: null
+        position: [-1.443658, 51.320375, 0.1]
+        rotation: 45
+    5-4:
+        calibration_file: null
+        position: [-1.78568, 51.09967, 0.1]
+        rotation: -115
+    2-11:
+        focal_lengths: [1712.4324324324323, 856.2162162162161]
+        principal_point: [2304, 1296]
+        position: [-0.1791071, 51.499189, 0.1]
+        rotation: [45, 250, 190]
