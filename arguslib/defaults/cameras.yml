@@ -15,6 +15,7 @@
 COBALT:
     defaults:
         camera_type: allsky
+        image_size_px: [3040, 3040]
     3-7:
         calibration_file: cobalt_3-7_calibration.yml
         position: [-1.439252, 51.146668, 0.1]
@@ -43,5 +44,6 @@ COBALT:
         camera_type: perspective
         focal_lengths: [1712.4324324324323, 856.2162162162161]
         principal_point: [2304, 1296]
+        image_size_px: [4608, 2592]
         position: [-0.1791071, 51.499189, 0.1]
         rotation: [45, 250, 190]

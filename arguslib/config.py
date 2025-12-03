@@ -17,16 +17,16 @@ CONFIG_SEARCH_PATHS = [
 ]
 
 
-def _iter_packaged_default_streams(filename: str) -> Iterable[BinaryIO]:
+def _iter_packaged_default_resources(filename: str) -> Iterable[object]:
     """
-    Yields open binary streams for default config files packaged with arguslib
+    Yields Traversable resources (or Paths) for default config files packaged with arguslib
     and any installed plugins advertising a defaults directory.
     """
     # 0) Core package defaults
     try:
         base = ilres.files("arguslib") / "defaults" / filename
         if hasattr(base, "is_file") and base.is_file():
-            yield base.open("rb")
+            yield base
     except Exception:
         pass
 
@@ -55,9 +55,18 @@ def _iter_packaged_default_streams(filename: str) -> Iterable[BinaryIO]:
                 p = obj / filename  # Traversable
 
             if hasattr(p, "is_file") and p.is_file():
-                yield p.open("rb")
+                yield p
         except Exception:
             continue
+
+
+def _iter_packaged_default_streams(filename: str) -> Iterable[BinaryIO]:
+    """
+    Yields open binary streams for default config files packaged with arguslib
+    and any installed plugins advertising a defaults directory.
+    """
+    for res in _iter_packaged_default_resources(filename):
+        yield res.open("rb")
 
 
 def _deep_copy_dict(d: dict) -> dict:
@@ -186,15 +195,6 @@ def resolve_config_resource(spec: Union[str, Path]) -> object:
         if candidate.exists():
             return candidate
 
-    # Packaged defaults
-    # We reuse the stream iterator logic but just return the resource
-    # (Re-implementing simplified resource finder to avoid stream opening)
-    try:
-        base = ilres.files("arguslib") / "defaults" / p.name
-        if hasattr(base, "is_file") and base.is_file():
-            return base
-    except Exception:
-        pass
-
-    # Fallback
-    return p
+    # Packaged defaults (Core + Plugins)
+    for res in _iter_packaged_default_resources(p.name):
+        return res

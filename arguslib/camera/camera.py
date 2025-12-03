@@ -60,9 +60,10 @@ class Camera(Instrument):
     def __init__(
         self,
         intrinsic_calibration: Projection,
+        image_size_px: list[int],
+        camera_type: str,
         *args,
         scale_factor=1,
-        camera_type="allsky",
         time_offset_s=0.0,
         data_loader_class=None,
         **kwargs,
@@ -70,17 +71,9 @@ class Camera(Instrument):
         self.intrinsic = intrinsic_calibration
         self.scale_factor = scale_factor
         self.camera_type = camera_type
-
-        config_img_size = kwargs.pop("image_size_px", None)
-        if config_img_size is not None:
-            self.image_size_px = np.array(config_img_size)
-        else:
-            self.image_size_px = (
-                [4608, 2592] if self.camera_type == "perspective" else [3040, 3040]
-            )
-
         self.time_offset_s = time_offset_s
 
+        self.image_size_px = image_size_px
         self.image_size_px = np.array(self.image_size_px) * scale_factor
 
         if data_loader_class is None:
