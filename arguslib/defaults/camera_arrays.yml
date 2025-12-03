@@ -1,3 +1,9 @@
+---
+# Config for camera arrays
+# A dictionary of array names, containing the campaign to which the cameras
+# belong, the list of cameras to include in the array, and the shape of the
+# array (number of cameras along x and y).
+
 COBALTArray:
   campaign: "COBALT"
   cameras:
