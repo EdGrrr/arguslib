@@ -113,12 +113,11 @@ class Camera(Instrument):
         camera_config = cameras[campaign][camstr]
 
         loader_name = camera_config.get("data_loader", campaign)
-
         LoaderClass = get_data_loader_class(loader_name)
 
         kwargs["data_loader_class"] = LoaderClass
 
-        if "calibration_file" in camera_config:  # Then this is an allsky camera
+        if camera_config["camera_type"] == "allsky":
             # Resolve calibration file across config locations and packaged defaults
             calib_resource = _resolve_calibration_resource(
                 camera_config.get("calibration_file")
@@ -134,6 +133,7 @@ class Camera(Instrument):
                     "position": Position(*camera_config["position"]),
                     "rotation": camera_config["rotation"],
                     "time_offset_s": time_offset_s,
+                    "camera_type": camera_config["camera_type"],
                 }
                 | ({"image_size_px": img_size} if img_size is not None else {})
                 | kwargs
@@ -155,7 +155,7 @@ class Camera(Instrument):
                 ),
                 position=Position(*camera_config["position"]),
                 rotation=camera_config["rotation"],
-                camera_type="perspective",
+                camera_type=camera_config["camera_type"],
                 **({"image_size_px": img_size} if img_size is not None else {}),
                 **kwargs,
             )

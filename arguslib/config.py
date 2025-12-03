@@ -3,10 +3,7 @@ Handles loading and merging of configuration files from standard locations.
 """
 
 from pathlib import Path
-from typing import Any, Dict
-from typing import Iterable, BinaryIO
-from typing import Union
-from typing import Iterable, Tuple, List
+from typing import Any, Dict, Iterable, BinaryIO, Union, Tuple, List
 import yaml
 import importlib.resources as ilres
 import importlib.metadata as ilmeta
@@ -24,14 +21,8 @@ def _iter_packaged_default_streams(filename: str) -> Iterable[BinaryIO]:
     """
     Yields open binary streams for default config files packaged with arguslib
     and any installed plugins advertising a defaults directory.
-
-    Entry point group for plugins:
-      - group: 'arguslib.config_sets'
-      - each entry returns either:
-          * a Traversable directory (importlib.resources.files(...)/"defaults"), or
-          * a string 'package:subdir' (subdir defaults to 'defaults' if omitted)
     """
-    # 0) Core package defaults: arguslib/defaults/<filename>
+    # 0) Core package defaults
     try:
         base = ilres.files("arguslib") / "defaults" / filename
         if hasattr(base, "is_file") and base.is_file():
@@ -49,300 +40,161 @@ def _iter_packaged_default_streams(filename: str) -> Iterable[BinaryIO]:
         )
     except Exception:
         eps = []
+
     for ep in eps:
         try:
             obj = ep.load()
-            # NEW: call provider if it is a function
             if callable(obj):
                 obj = obj()
-        except Exception:
-            continue
 
-        try:
             if isinstance(obj, str):
                 pkg, _, subdir = obj.partition(":")
                 subdir = subdir or "defaults"
                 p = ilres.files(pkg) / subdir / filename
-                if hasattr(p, "is_file") and p.is_file():
-                    yield p.open("rb")
             else:
                 p = obj / filename  # Traversable
-                if hasattr(p, "is_file") and p.is_file():
-                    yield p.open("rb")
+
+            if hasattr(p, "is_file") and p.is_file():
+                yield p.open("rb")
         except Exception:
             continue
 
 
-def _iter_packaged_default_resources(filename: str) -> Iterable[object]:
-    """
-    Yields Traversable resources for packaged defaults: core and plugin-provided.
-    """
-    # Core defaults
-    try:
-        base = ilres.files("arguslib") / "defaults" / filename
-        if hasattr(base, "is_file") and base.is_file():
-            yield base
-    except Exception:
-        pass
-
-    # Plugin defaults via entry points
-    try:
-        eps_all = ilmeta.entry_points()
-        eps = (
-            eps_all.select(group="arguslib.config_sets")
-            if hasattr(eps_all, "select")
-            else eps_all.get("arguslib.config_sets", [])
-        )
-    except Exception:
-        eps = []
-    for ep in eps:
-        try:
-            obj = ep.load()
-            # NEW: call provider if it is a function
-            if callable(obj):
-                obj = obj()
-        except Exception:
-            continue
-
-        try:
-            if isinstance(obj, str):
-                pkg, _, subdir = obj.partition(":")
-                subdir = subdir or "defaults"
-                p = ilres.files(pkg) / subdir / filename
-                if hasattr(p, "is_file") and p.is_file():
-                    yield p
-            else:
-                p = obj / filename  # Traversable
-                if hasattr(p, "is_file") and p.is_file():
-                    yield p
-        except Exception:
-            continue
-
-
-def load_config(filename: str) -> Dict[str, Any]:
-    """
-    Loads and merges YAML configuration (shallow merge; later wins).
-    """
-    configs: list[dict] = []
-    # 0) Packaged defaults
-    for stream in _iter_packaged_default_streams(filename):
-        try:
-            doc = yaml.safe_load(stream)
-            if isinstance(doc, dict) and doc:
-                configs.append(doc)
-        finally:
-            try:
-                stream.close()
-            except Exception:
-                pass
-    # 1) System/user overrides
-    for config_dir in CONFIG_SEARCH_PATHS:
-        config_file = config_dir / filename
-        if config_file.exists():
-            with open(config_file, "r") as f:
-                doc = yaml.safe_load(f)
-                if isinstance(doc, dict) and doc:
-                    configs.append(doc)
-    if not configs:
-        raise FileNotFoundError(f"No configuration file named '{filename}' found.")
-    merged: Dict[str, Any] = {}
-    for c in configs:
-        merged.update(c)
-    return merged
-
-
-def _iter_config_dicts(filename: str) -> Iterable[dict]:
-    """
-    Yields config dicts in precedence order:
-      1) core packaged defaults, then plugin defaults
-      2) system/user overrides (in CONFIG_SEARCH_PATHS order)
-    """
-    # 0) Packaged defaults
-    for stream in _iter_packaged_default_streams(filename):
-        try:
-            doc = yaml.safe_load(stream)
-            if isinstance(doc, dict) and doc:
-                yield doc
-        finally:
-            try:
-                stream.close()
-            except Exception:
-                pass
-    # 1) System/user overrides
-    for config_dir in CONFIG_SEARCH_PATHS:
-        config_file = config_dir / filename
-        if config_file.exists():
-            with open(config_file, "r") as f:
-                doc = yaml.safe_load(f)
-                if isinstance(doc, dict) and doc:
-                    yield doc
+def _deep_copy_dict(d: dict) -> dict:
+    """Lightweight deep copy for nested dicts."""
+    out = {}
+    for k, v in d.items():
+        out[k] = _deep_copy_dict(v) if isinstance(v, dict) else v
+    return out
 
 
 def _deep_update(dst: dict, src: dict) -> dict:
     """
-    Recursively merge src into dst (maps are merged, scalars/lists replaced).
-    Returns dst.
+    Recursively merge src into dst.
+
+    Special 'defaults' key logic:
+    If a dict contains a 'defaults' key, those values are applied to all
+    sibling dictionary entries before merging the specific values.
     """
+    # 1. Apply 'defaults' from src to src's children (intra-file defaults)
+    src_defaults = src.get("defaults")
+    if isinstance(src_defaults, dict):
+        for k, v in src.items():
+            if k == "defaults":
+                continue
+            if isinstance(v, dict):
+                # Create a new dict that is defaults + specific overrides
+                src[k] = _deep_copy_dict(src_defaults) | v
+
+    # 2. Apply 'defaults' from dst to src's children (inter-file inheritance)
+    # This ensures that defaults defined in base configs apply to items in user configs
+    dst_defaults = dst.get("defaults")
+    if isinstance(dst_defaults, dict):
+        for k, v in src.items():
+            if k == "defaults":
+                continue
+            if isinstance(v, dict):
+                # Apply inherited defaults, but let src's values (including its own defaults) win
+                src[k] = _deep_copy_dict(dst_defaults) | src[k]
+
+    # 3. Merge src into dst
     for k, v in src.items():
-        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+        if k == "defaults":
+            # Persist defaults into dst so they are available for subsequent config files
+            if k not in dst:
+                dst[k] = {}
+            if isinstance(v, dict):
+                _deep_update(dst[k], v)
+            continue
+
+        if isinstance(v, dict):
+            # Force recursion to ensure defaults expansion happens within v
+            if k not in dst or not isinstance(dst[k], dict):
+                dst[k] = {}
             _deep_update(dst[k], v)
         else:
             dst[k] = v
     return dst
 
 
-def load_config_deep(filename: str) -> Dict[str, Any]:
+def load_config(filename: str) -> Dict[str, Any]:
     """
-    Deep-merge all sources so nested maps are unioned (later wins per key).
-    Useful for discovery/listing without losing default entries.
+    Loads configuration from all sources (defaults, plugins, user) and performs
+    a deep merge. Later sources override earlier ones.
     """
     merged: Dict[str, Any] = {}
-    any_found = False
-    for doc in _iter_config_dicts(filename):
-        any_found = True
-        _deep_update(merged, doc)
-    if not any_found:
-        raise FileNotFoundError(f"No configuration file named '{filename}' found.")
-    return merged
+    found_any = False
 
-
-def list_cameras(deep_merge: bool = True) -> List[Tuple[str, str]]:
-    """
-    Returns a list of (campaign, camera_id) pairs available in cameras.yml.
-    If deep_merge=True, unions defaults, plugins, system, and user configs.
-    """
-    data = load_config_deep("cameras.yml") if deep_merge else load_config("cameras.yml")
-    out: List[Tuple[str, str]] = []
-    for campaign, cams in (data or {}).items():
-        if isinstance(cams, dict):
-            out.extend((campaign, cam_id) for cam_id in cams.keys())
-    return sorted(out)
-
-
-def list_instrument_configs(filename: str, deep_merge: bool = True) -> Dict[str, Any]:
-    """
-    Generic accessor to fetch an instrument config mapping (deep-merged by default).
-    Example: list_instrument_configs("cameras.yml")
-    """
-    return load_config_deep(filename) if deep_merge else load_config(filename)
-
-
-def load_path_from_config(filename: str) -> Path:
-    """Loads a single path from a text file in standard config locations."""
-    # User-first search
-    for config_dir in reversed(CONFIG_SEARCH_PATHS):
-        config_file = config_dir / filename
-        if config_file.exists():
-            return Path(config_file.read_text().strip())
-    # Packaged defaults
+    # 1. Load from Packaged Defaults & Plugins
     for stream in _iter_packaged_default_streams(filename):
         try:
-            content = stream.read().decode("utf-8")
-            if content:
-                return Path(content.strip())
+            doc = yaml.safe_load(stream)
+            if isinstance(doc, dict) and doc:
+                found_any = True
+                _deep_update(merged, doc)
         finally:
             try:
                 stream.close()
             except Exception:
                 pass
-    raise FileNotFoundError(f"Path configuration file '{filename}' not found.")
+
+    # 2. Load from System/User Paths
+    for config_dir in CONFIG_SEARCH_PATHS:
+        config_file = config_dir / filename
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                doc = yaml.safe_load(f)
+                if isinstance(doc, dict) and doc:
+                    found_any = True
+                    _deep_update(merged, doc)
+
+    if not found_any:
+        raise FileNotFoundError(f"No configuration file named '{filename}' found.")
+
+    return merged
+
+
+def list_cameras() -> List[Tuple[str, str]]:
+    """
+    Returns a list of (campaign, camera_id) pairs available in cameras.yml.
+    """
+    data = load_config("cameras.yml")
+    out: List[Tuple[str, str]] = []
+    for campaign, cams in data.items():
+        if isinstance(cams, dict):
+            for cam_id in cams.keys():
+                if cam_id != "defaults":
+                    out.append((campaign, cam_id))
+    return sorted(out)
 
 
 def resolve_config_resource(spec: Union[str, Path]) -> object:
     """
-    Resolve a config spec (str/Path) to either:
-      - a filesystem Path, or
-      - a Traversable resource (importlib.resources)
-    Search order: user/system config dirs, then packaged defaults (core, plugins).
+    Resolve a config spec (str/Path) to a Path or Traversable resource.
     """
     p = Path(str(spec)).expanduser()
+
+    # Absolute path or existing relative path
     if p.is_absolute() and p.exists():
         return p
     if p.exists():
         return p
+
+    # User config dirs
     for cfg_dir in CONFIG_SEARCH_PATHS:
         candidate = cfg_dir / p.name
         if candidate.exists():
             return candidate
-    for res in _iter_packaged_default_resources(p.name):
-        return res
-    return p
 
-
-def debug_config_resolution(filename: str) -> Dict[str, Any]:
-    """
-    Returns details about where '<filename>' would be searched/loaded from:
-    - CONFIG_SEARCH_PATHS on disk
-    - core packaged defaults
-    - plugin-provided defaults via entry points
-    """
-    info: Dict[str, Any] = {
-        "filename": filename,
-        "CONFIG_SEARCH_PATHS": [str(p) for p in CONFIG_SEARCH_PATHS],
-        "core_packaged_default": None,
-        "plugin_providers": [],
-        "filesystem_hits": [],
-    }
-    # Core packaged default
+    # Packaged defaults
+    # We reuse the stream iterator logic but just return the resource
+    # (Re-implementing simplified resource finder to avoid stream opening)
     try:
-        base = ilres.files("arguslib") / "defaults" / filename
+        base = ilres.files("arguslib") / "defaults" / p.name
         if hasattr(base, "is_file") and base.is_file():
-            info["core_packaged_default"] = str(base)
-    except Exception as e:
-        info["core_packaged_default"] = f"error: {e!r}"
+            return base
+    except Exception:
+        pass
 
-    # Plugin defaults via entry points
-    try:
-        eps_all = ilmeta.entry_points()
-        eps = (
-            eps_all.select(group="arguslib.config_sets")
-            if hasattr(eps_all, "select")
-            else eps_all.get("arguslib.config_sets", [])
-        )
-    except Exception as e:
-        eps = []
-        info["plugin_ep_error"] = repr(e)
-
-    for ep in eps:
-        ep_info = {
-            "name": getattr(ep, "name", None),
-            "value": getattr(ep, "value", None),
-            "module": getattr(ep, "module", None),
-            "attr": getattr(ep, "attr", None),
-        }
-        try:
-            obj = ep.load()
-            if callable(obj):
-                obj = obj()
-            ep_info["loaded"] = True
-            if isinstance(obj, str):
-                pkg, _, subdir = obj.partition(":")
-                subdir = subdir or "defaults"
-                d = ilres.files(pkg) / subdir
-            else:
-                d = obj  # Traversable
-            ep_info["defaults_dir"] = str(d)
-            f = d / filename
-            is_file = hasattr(f, "is_file") and f.is_file()
-            ep_info["contains_file"] = is_file
-            if is_file:
-                ep_info["resource"] = str(f)
-        except Exception as e:
-            ep_info["loaded"] = False
-            ep_info["error"] = repr(e)
-        info["plugin_providers"].append(ep_info)
-
-    # Filesystem hits
-    for config_dir in CONFIG_SEARCH_PATHS:
-        cf = config_dir / filename
-        if cf.exists():
-            info["filesystem_hits"].append(str(cf))
-
-    return info
-
-
-def print_config_debug(filename: str) -> None:
-    """Pretty-print debug_config_resolution(filename)."""
-    import pprint
-
-    pprint.pprint(debug_config_resolution(filename))
+    # Fallback
+    return p

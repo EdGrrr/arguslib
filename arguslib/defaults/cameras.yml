@@ -1,11 +1,20 @@
 ---
 # Config for cameras
 # A dictionary of campaign names, each with a dictionary of camera names
-# Each camera has a calibration file, position and rotation
-# The calibration file is the path to the camera calibration file, if null,
-# the default file will be used.
+# Each camera has a type, position, and rotation (three angles, or one in the
+# case of a roll around a vertical optical axis.
+# 
+# 
+# All-sky cameras take a calibration yaml file. `calibration_file` is the path
+# to the camera calibration file, if null, the default file will be used
+# (arguslib/defaults/cobalt_3-7_calibration.yml).
+# 
+# Perspective cameras are currently set up to instead take focal lengths and
+# principal points only.
 
 COBALT:
+    defaults:
+        camera_type: allsky
     3-7:
         calibration_file: cobalt_3-7_calibration.yml
         position: [-1.439252, 51.146668, 0.1]
@@ -31,6 +40,7 @@ COBALT:
         position: [-1.78568, 51.09967, 0.1]
         rotation: -115
     2-11:
+        camera_type: perspective
         focal_lengths: [1712.4324324324323, 856.2162162162161]
         principal_point: [2304, 1296]
         position: [-0.1791071, 51.499189, 0.1]
