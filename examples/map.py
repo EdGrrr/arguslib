@@ -16,12 +16,15 @@ from arguslib.misc.plotting import plot_range_rings
 import matplotlib.pyplot as plt
 
 # 1. Create the map instrument to serve as the background
-map_instrument = MapInstrument.from_config("chilbolton_and_sirta")
+map_instrument = MapInstrument.from_config("uk_france")
 ai = AutomaticADSBAircraftInterface(map_instrument)
 ax = ai.show(
     dt.datetime(2025, 5, 1, 7, 25, 6),
     tlen=20 * 60,
-    trail_kwargs={"plot_kwargs": {"linewidth": 0.5}},
+    trail_kwargs={
+        "plot_kwargs": {"linewidth": 0.5},
+        "plot_plane_kwargs": {"markersize": 2, "markeredgewidth": 0, 'color':'red'}
+        },
 )
 
 # 2. Load an instrument to use as the center for the rings
@@ -41,6 +44,7 @@ plot_range_rings(
     ax=ax,
     ranges=[10],
     label="10 km range (COBALT)",
+    zorder=10,
 )
 plot_range_rings(
     plotting_instrument=map_instrument,
@@ -50,26 +54,31 @@ plot_range_rings(
     ranges=[10],
     label="10 km range (Hypothetical Paris Camera)",
     c="teal",
+    zorder=10,
 )
 
 
 ax.scatter(
     [-0.17899],
     [51.49911],
-    s=4,
+    s=10,
     color="blue",
     label="Huxley Building, Imperial College London",
     transform=ccrs.PlateCarree(),
     zorder=9,
+    marker="x",
+    linewidths=.5,
 )
 ax.scatter(
     [2.35591],
     [48.84718],
-    s=4,
+    s=10,
     color="navy",
     label="Sorbonne Sciences, Paris",
     transform=ccrs.PlateCarree(),
     zorder=9,
+    marker="x",
+    linewidths=.5,
 )
 
 plt.legend(fontsize="small")

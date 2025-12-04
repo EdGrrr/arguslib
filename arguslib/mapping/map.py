@@ -16,7 +16,7 @@ class MapInstrument(PlottableInstrument):
     providing a geographical context.
     """
 
-    def __init__(self, projection=None, extent=None, **attrs):
+    def __init__(self, projection=None, extent=None, show_ocean=True, show_land=True, **attrs):
         """
         Initializes the map instrument.
 
@@ -29,6 +29,8 @@ class MapInstrument(PlottableInstrument):
             projection = ccrs.PlateCarree()
         self.projection = projection
         self.extent = extent
+        self.show_ocean = show_ocean
+        self.show_land = show_land
         super().__init__(**attrs)
 
     @classmethod
@@ -89,9 +91,11 @@ class MapInstrument(PlottableInstrument):
         # Add common map features first
         ax.coastlines(resolution=kwargs.get("resolution", "10m"))
         ax.gridlines(draw_labels=True, linestyle="--", alpha=0.5)
-        ax.add_feature(cfeature.LAND, facecolor="lightgray", alpha=0.5)
-        ax.add_feature(cfeature.OCEAN, facecolor="lightblue", alpha=0.5)
-        ax.add_feature(cfeature.LAKES, facecolor="lightblue", alpha=0.5)
+        if self.show_land:
+            ax.add_feature(cfeature.LAND, facecolor="lightgray", alpha=0.5)
+        if self.show_ocean:
+            ax.add_feature(cfeature.OCEAN, facecolor="lightblue", alpha=0.5)
+            ax.add_feature(cfeature.LAKES, facecolor="lightblue", alpha=0.5)
         # Set the extent after drawing features, as they can sometimes override it.
         if self.extent:
             ax.set_extent(self.extent, crs=ccrs.PlateCarree())

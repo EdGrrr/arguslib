@@ -247,10 +247,10 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
+                **(trail_plot_args|
+                {'color': "r",
+                'marker': "o",
+                'markersize': 2} | plot_plane_kwargs),
             )
 
         if plotting_method == "intersect_plot":
@@ -312,11 +312,11 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
-            )
+                **(trail_plot_args | 
+                {'color': "r",
+                'marker': "o",
+                'markersize': 2} | plot_plane_kwargs,
+            ))
 
         get_fig_from_ax_or_axs(ax).canvas.draw()
 
