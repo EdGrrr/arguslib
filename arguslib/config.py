@@ -126,21 +126,30 @@ def _deep_update(dst: dict, src: dict) -> dict:
     return dst
 
 
-def load_config(filename: str) -> Dict[str, Any]:
+def load_config(filename: str) -> Union[Dict[str, Any], str]:
     """
     Loads configuration from all sources (defaults, plugins, user) and performs
     a deep merge. Later sources override earlier ones.
+    For .txt files, returns the content of the most specific file found as a string.
     """
-    merged: Dict[str, Any] = {}
+    is_txt = filename.endswith(".txt")
+    merged: Union[Dict[str, Any], str] = "" if is_txt else {}
     found_any = False
 
     # 1. Load from Packaged Defaults & Plugins
     for stream in _iter_packaged_default_streams(filename):
         try:
-            doc = yaml.safe_load(stream)
-            if isinstance(doc, dict) and doc:
+            if is_txt:
+                doc = stream.read().decode("utf-8")
+            else:
+                doc = yaml.safe_load(stream)
+
+            if doc:
                 found_any = True
-                _deep_update(merged, doc)
+                if is_txt:
+                    merged = doc
+                elif isinstance(doc, dict):
+                    _deep_update(merged, doc)
         finally:
             try:
                 stream.close()
@@ -152,10 +161,17 @@ def load_config(filename: str) -> Dict[str, Any]:
         config_file = config_dir / filename
         if config_file.exists():
             with open(config_file, "r") as f:
-                doc = yaml.safe_load(f)
-                if isinstance(doc, dict) and doc:
+                if is_txt:
+                    doc = f.read()
+                else:
+                    doc = yaml.safe_load(f)
+
+                if doc:
                     found_any = True
-                    _deep_update(merged, doc)
+                    if is_txt:
+                        merged = doc
+                    elif isinstance(doc, dict):
+                        _deep_update(merged, doc)
 
     if not found_any:
         raise FileNotFoundError(f"No configuration file named '{filename}' found.")
