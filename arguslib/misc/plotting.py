@@ -144,23 +144,38 @@ def get_pixel_transform(camera, ax, lr_flip=True):
     principal_point = camera.intrinsic.principal_point
     cx, cy = principal_point
 
-    top_bearing_deg = camera.get_bearing_to_image_top()
+    # Determine rotation based on camera type and orientation
+    R_i_to_g = rotation_matrix_i_to_g(*camera.rotation)
+    # Calculate Global Up in Instrument Frame
+    i_up = R_i_to_g.T @ np.array([0, 0, 1])
+
+    # If the camera is looking nearly straight up or down (within ~25 degrees),
+    # align to North (bearing). Otherwise, align to Zenith (up is up).
+    if np.abs(i_up[2]) > 0.9:
+        top_bearing_deg = camera.get_bearing_to_image_top()
+        rotation_angle = -top_bearing_deg
+    else:
+        # Calculate angle of Zenith relative to Image Top (Y-axis)
+        # atan2(x, y) gives angle from Y-axis (CW if x is Right)
+        zenith_angle = np.degrees(np.arctan2(i_up[0], i_up[1]))
+        rotation_angle = 180 - zenith_angle
 
     w, h = camera.image_size_px
-    min_side = min(w, h)
 
-    # Translate so principal point maps to the center of the square [0, min_side]^2
-    translation_px = (min_side / 2 - cx, min_side / 2 - cy)
-    # I don't really know why this is relative to min_side / 2 rather than w / 2, h / 2,
-    # but it is necessary to get the right alignment.
-    # I think the logic is to do with the scaling.
+    if camera.camera_type == "perspective":
+        axes_aspect = h / w
+        scale_factor = 1 / w
+    else:
+        axes_aspect = 1.0
+        scale_factor = 1 / min(w, h)
 
     transPixel = (
-        Affine2D().translate(*translation_px)
-        # Uniform scale by the lesser side to preserve aspect ratio
-        .scale(1 / min_side, 1 / min_side)
-        # Rotate so that local image-top aligns with North (polar 0°)
-        .rotate_deg_around(0.5, 0.5, -top_bearing_deg)
+        Affine2D()
+        .translate(-cx, -cy)
+        .scale(scale_factor, scale_factor)
+        .rotate_deg(rotation_angle)
+        .scale(1, 1 / axes_aspect)
+        .translate(0.5, 0.5)
     )
 
     try:
