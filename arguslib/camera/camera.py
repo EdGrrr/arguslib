@@ -66,6 +66,7 @@ class Camera(Instrument):
         scale_factor=1,
         time_offset_s=0.0,
         data_loader_class=None,
+        invert_axes=[False, False],
         **kwargs,
     ):
         self.intrinsic = intrinsic_calibration
@@ -80,6 +81,7 @@ class Camera(Instrument):
             self._data_loader_class = CameraData
         else:
             self._data_loader_class = data_loader_class
+        self._invert_axes = invert_axes
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -127,6 +129,7 @@ class Camera(Instrument):
                     "rotation": camera_config["rotation"],
                     "time_offset_s": time_offset_s,
                     "camera_type": camera_config["camera_type"],
+                    "invert_axes": camera_config.get("invert_axes", [False, False]),
                 }
                 | ({"image_size_px": img_size} if img_size is not None else {})
                 | kwargs
@@ -149,6 +152,7 @@ class Camera(Instrument):
                 position=Position(*camera_config["position"]),
                 rotation=camera_config["rotation"],
                 camera_type=camera_config["camera_type"],
+                invert_axes=camera_config.get("invert_axes", [False, False]),
                 **({"image_size_px": img_size} if img_size is not None else {}),
                 **kwargs,
             )
@@ -243,8 +247,9 @@ class Camera(Instrument):
         from .locator import CameraData
 
         LoaderClass = self._data_loader_class
+        invert_axes = self._invert_axes
 
-        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"])
+        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"], invert_axes=invert_axes)
 
     @override
     def _show(

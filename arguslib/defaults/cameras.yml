@@ -11,6 +11,16 @@
 # 
 # Perspective cameras are currently set up to instead take focal lengths and
 # principal points only.
+# 
+# Rotation angles are in degrees. They are are measured as:
+# 1. The angle measured up from the tangent plane towards the zenith axis
+#     (90 = pointing up, 0 = horizontal).
+# 2. The azimuth angle, measured clockwise from North (0 = North, 90 = East, etc.)
+# 3. The roll angle, measured clockwise when looking along the optical axis
+#     in the direction of view. (0 = no roll, positive = clockwise roll). 
+# 
+# The image axes can also be inverted using the `invert_axes` parameter,
+# which takes a list of two booleans [invert_x, invert_y].
 
 COBALT:
     defaults:
@@ -46,4 +56,5 @@ COBALT:
         principal_point: [2304, 1296]
         image_size_px: [4608, 2592]
         position: [-0.1791071, 51.499189, 0.1]
-        rotation: [45, 250, 190]
+        rotation: [40, 260, 4]
+        invert_axes: [true, false]

@@ -20,7 +20,7 @@ class CameraData:
     This loader finds and reads data from timestamped MP4 files.
     """
 
-    def __init__(self, campaign, camstr):
+    def __init__(self, campaign, camstr, invert_axes=[False, False]):
         from csat2.locator import FileLocator  # keep existing behaviour
 
         self.campaign = campaign
@@ -32,6 +32,7 @@ class CameraData:
 
         self._source = None
         self._source_key = None  # (type, path)
+        self._invert_axes = invert_axes
 
     def _select_source_for_dt(self, dt: dtmod.datetime):
         """Finds the correct MP4 VideoFrameSource for the given datetime."""
@@ -67,9 +68,15 @@ class CameraData:
             raise FileNotFoundError(
                 f"No image within 3 minute tolerance for {self.camstr} at {dt} (closest at {timestamp}). The nearest timestamp is {timestamp}."
             )
+        
+        if self._invert_axes[0]:
+            data = data[::-1, :]
+        if self._invert_axes[1]:
+            data = data[:, ::-1]
 
         if not return_timestamp:
             return data
+            
         return data, timestamp
 
     def get_video_file(self, dt):
