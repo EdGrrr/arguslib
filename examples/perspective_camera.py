@@ -7,12 +7,12 @@ from pathlib import Path
 from arguslib import AircraftInterface, Camera
 from arguslib.misc.plotting import show_the_sun
 
-dt = datetime(2025, 5, 1, 16, 10)
 cam = Camera.from_config("COBALT", "2-11")
 
-# This is the "arguslib" way to show the camera data. At the moment, this is producing something mostly-right, but with the *left and right* sides flipped!
-ax = cam.show(dt)
-show_the_sun(ax, cam, plotting_method='scatter')
+for h in range(13, 18):
+    dt = datetime(2025, 5, 1, h, 10)
+    ax = cam.show(dt)
+    show_the_sun(ax, cam, plotting_method='scatter')
 
 
 # %%

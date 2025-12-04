@@ -10,7 +10,8 @@
 # (arguslib/defaults/cobalt_3-7_calibration.yml).
 # 
 # Perspective cameras are currently set up to instead take focal lengths and
-# principal points only.
+# principal points only. The focal lengths are in pixels, and can be calculated
+# using the helper function arguslib.camera.calibration.focal_length_px.
 # 
 # Rotation angles are in degrees. They are are measured as:
 # 1. The angle measured up from the tangent plane towards the zenith axis
@@ -52,9 +53,11 @@ COBALT:
         rotation: -115
     2-11:
         camera_type: perspective
-        focal_lengths: [1712.4324324324323, 856.2162162162161]
+        focal_lengths: [1964.7550435869148, 1964.7550435869148] 
+        # calculated from sensor size and focal length in mm (arguslib.camera.calibration.focal_length_px)
+        # Note: two different focal lengths implies non-square pixels, which is unnecessary over complication, but works in theory.
         principal_point: [2304, 1296]
         image_size_px: [4608, 2592]
         position: [-0.1791071, 51.499189, 0.1]
-        rotation: [40, 260, 4]
+        rotation: [34, 260, 4]
         invert_axes: [true, false]
