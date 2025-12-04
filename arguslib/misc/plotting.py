@@ -253,6 +253,25 @@ def get_timestamp_from_ax(ax):
             return timestamp
         except TypeError:
             return None
+        
+def get_fig_from_ax_or_axs(ax):
+    # ax is an axes on a timestamped figure, or an "axes iterable" which can contain either axes or more axes itereables.
+    try:
+        # ax is a matplotlib ax
+        fig = ax.get_figure()
+        return fig
+    except AttributeError as e:
+        if "SubFigure" in e.args[0]:
+            return ax.get_figure().get_figure()
+        try:
+            i = 0
+            fig = None
+            while fig is None and i < len(ax):
+                fig = get_fig_from_ax_or_axs(ax[i])
+                i += 1
+            return fig
+        except TypeError:
+            return None
 
 
 # --- Solar position helpers (NOAA/SPA-style approximation) ---
