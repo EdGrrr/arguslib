@@ -10,10 +10,11 @@ ts_factor = 4
 
 
 class Video:
-    def __init__(self, filepath):
+    def __init__(self, filepath, timestamp_timezone="UTC"):
         self.filepath = filepath
         self.cap = cv2.VideoCapture(filepath)
         self.n_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.timestamp_timezone = timestamp_timezone
         self.time_bounds = self.get_timestamps([0, self.n_frames - 1])
 
     def get_data_time(self, dt, return_timestamp=False):
@@ -22,7 +23,7 @@ class Video:
         n = np.round(n).astype(int)
         frame = self.get_frame(n)
         if return_timestamp:
-            return frame, extract_timestamp(frame)
+            return frame, extract_timestamp(frame, timestamp_timezone=self.timestamp_timezone)
         return frame
 
     def get_frame(self, n):
@@ -43,7 +44,7 @@ class Video:
 
         for i in ns:
             frame = self.get_frame(i)
-            timestamps.append(extract_timestamp(frame))
+            timestamps.append(extract_timestamp(frame, timestamp_timezone=self.timestamp_timezone))
         return tuple(timestamps)
 
     def estimate_frame_number(self, dt):
@@ -83,15 +84,13 @@ def create_timestamp():
     pass
 
 
-def extract_timestamp(image, ts_factor=ts_factor):
+def extract_timestamp(image, ts_factor=ts_factor, timestamp_timezone="UTC"):
     """Return a datetime object with the image timestamp to the nearest second."""
     image_ts_array = (image[0, 0 : (31 * ts_factor) : ts_factor, 0] > 128).astype("int")
     int_timestamp = int("".join(str(a) for a in image_ts_array), 2)
-    # return datetime.datetime.fromtimestamp(
-    #     int_timestamp
-    # )
+    
     local_time = datetime.datetime.fromtimestamp(
-        int_timestamp, tz=ZoneInfo("Europe/London")
+        int_timestamp, tz=ZoneInfo(timestamp_timezone)
     )
     utc_time = local_time.astimezone(utc)
     return utc_time.replace(tzinfo=None)  # Make "timezone naive" to be compatible.

@@ -67,6 +67,7 @@ class Camera(Instrument):
         time_offset_s=0.0,
         data_loader_class=None,
         invert_axes=[False, False],
+        timestamp_timezone="UTC",
         **kwargs,
     ):
         self.intrinsic = intrinsic_calibration
@@ -82,6 +83,7 @@ class Camera(Instrument):
         else:
             self._data_loader_class = data_loader_class
         self._invert_axes = invert_axes
+        self.timestamp_timezone = timestamp_timezone
         super().__init__(*args, **kwargs)
 
     @classmethod
@@ -130,6 +132,7 @@ class Camera(Instrument):
                     "time_offset_s": time_offset_s,
                     "camera_type": camera_config["camera_type"],
                     "invert_axes": camera_config.get("invert_axes", [False, False]),
+                    "timestamp_timezone": camera_config.get("timestamp_timezone", "UTC"),
                 }
                 | ({"image_size_px": img_size} if img_size is not None else {})
                 | kwargs
@@ -248,8 +251,13 @@ class Camera(Instrument):
 
         LoaderClass = self._data_loader_class
         invert_axes = self._invert_axes
+        
+        if issubclass(LoaderClass, CameraData):
+            kwargs = {"timestamp_timezone": getattr(self, "timestamp_timezone", "UTC")}
+        else:
+            kwargs = {}
 
-        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"], invert_axes=invert_axes)
+        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"], invert_axes=invert_axes, **kwargs)
 
     @override
     def _show(

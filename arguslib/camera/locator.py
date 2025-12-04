@@ -20,7 +20,7 @@ class CameraData:
     This loader finds and reads data from timestamped MP4 files.
     """
 
-    def __init__(self, campaign, camstr, invert_axes=[False, False]):
+    def __init__(self, campaign, camstr, invert_axes=[False, False], timestamp_timezone="UTC"):
         from csat2.locator import FileLocator  # keep existing behaviour
 
         self.campaign = campaign
@@ -29,6 +29,7 @@ class CameraData:
         self.locator.search_paths["ARGUS"] = {}
         self.locator.search_paths["ARGUS"]["video"] = [video_filename_format]
         self.locator.search_paths["ARGUS"]["cal"] = [cal_filename_format]
+        self.timestamp_timezone = timestamp_timezone
 
         self._source = None
         self._source_key = None  # (type, path)
@@ -45,7 +46,7 @@ class CameraData:
 
         key = ("mp4", mp4_path)
         if self._source_key != key:
-            self._source = VideoFrameSource(mp4_path)
+            self._source = VideoFrameSource(mp4_path, timestamp_timezone=self.timestamp_timezone)
             self._source_key = key
         return self._source
 
