@@ -1,8 +1,5 @@
-import arguslib
-import arguslib.aircraft
-import arguslib.instruments
-import arguslib.instruments.statuslib
-from arguslib.instruments.instruments import Position
+# %%
+from arguslib import Position, Camera, Fleet
 from arguslib.aircraft.fleet import Fleet
 import datetime
 import matplotlib.pyplot as plt
@@ -57,7 +54,7 @@ contrail_form_time = datetime.datetime(2025, 3, 5, 12, 38, 5)
 fleet.load_output(fleet_file_pattern)
 
 camstr = "3-7"  # As closest to Kepler
-camera = arguslib.instruments.statuslib.cameras[camstr]
+camera = Camera.from_config("COBALT", "3-7")
 
 
 dtime = time_range[0]
@@ -198,3 +195,5 @@ plt.show()
 # lat = self.positions[startind:index, self.variables.index('lat')]
 
 # track_pos = np.array(geo.xy_offset_to_ll(lon, lat, *track_offset_km))
+
+# %%
