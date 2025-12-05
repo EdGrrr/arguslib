@@ -274,13 +274,13 @@ class AircraftInterface(PlottableInstrument):
             plotted_icaos = []
             for t, (ti, tf) in tqdm(zip(
                 times_midpoints, zip(times_edges[:-2], times_edges[2:])
-            ), total=len(times_midpoints), desc="Processing chunks of radar..."):
+            ), total=len(times_midpoints), desc="Processing radar intersections in time chunks..."):
                 dict_positions = self.get_trail_positions(
                     datetime.datetime.fromtimestamp(t),
                     icao_include=icao_include,
                     **kwargs,
                 )
-                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions)):
+                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions), leave=False):
                     # this long loop is slowing things down...
                     if acft in plotted_icaos:
                         continue

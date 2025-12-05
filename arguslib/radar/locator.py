@@ -75,7 +75,7 @@ class RadarData:
                         seconds=scan_duration_seconds
                     )
 
-                    if scan_start_time <= dt <= scan_end_time:
+                    if scan_start_time.replace(microsecond=0) <= dt <= scan_end_time.replace(microsecond=0) + datetime.timedelta(seconds=1):
                         return self.radar_data
                 else:
                     # Cached data is invalid or incomplete, invalidate
