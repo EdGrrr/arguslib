@@ -127,15 +127,50 @@ class PerspectiveProjection:
         )[0]
         xy = undistorted - self.principal_point
         z = np.ones_like(xy[..., :1])  # Assume z = 1 for normalized view direction
-        v_view = np.concatenate((xy, z), axis=-1)
-        return unit(v_view) if norm else v_view
+
+        # Standard CV: x=right, y=down, z=forward
+        # Arguslib Instrument: x=right, y=up, z=forward
+
+        # CV Frame: X_cv, Y_cv, Z_cv (Forward)
+        # Inst Frame: X_inst, Y_inst (Up), Z_inst (Forward)
+
+        # We construct the vector in Instrument frame:
+        # X_inst = X_cv
+        # Y_inst = -Y_cv (Up in image is -Y in pixels usually)
+        # Z_inst = Z_cv (Forward)
+
+        v_view_cv = np.concatenate((xy, z), axis=-1)
+
+        v_view_inst = np.stack(
+            [v_view_cv[..., 0], -v_view_cv[..., 1], v_view_cv[..., 2]], axis=-1
+        )
+
+        return unit(v_view_inst) if norm else v_view_inst
 
     def view_to_image(self, v_view, normed: bool = False):
         """
         Convert a 3D location to a pixel location using OpenCV projection.
+        Input v_view is in Instrument Frame (X=Right, Y=Up, Z=Forward).
         """
-        if normed:
-            v_view = v_view / v_view[..., 2:3]  # Normalize by z-coordinate
-        xy = v_view[..., :2] / v_view[..., 2:3]  # Perspective division
-        distorted = xy * self.focal_lengths + self.principal_point
+        # Convert Instrument Frame to CV Frame for projection
+        # Inst(X, Y, Z) -> CV(X, -Y, Z)
+        # X_cv = X_inst
+        # Y_cv = -Y_inst
+        # Z_cv = Z_inst
+
+        x = v_view[..., 0]
+        y = v_view[..., 1]
+        z = v_view[..., 2]
+
+        # Perspective division: x' = X_cv / Z_cv, y' = Y_cv / Z_cv
+        # x' = x / z
+        # y' = -y / z
+
+        # Avoid division by zero
+        denom = z
+        denom = np.where(np.abs(denom) < 1e-6, 1e-6, denom)
+
+        xy_proj = np.stack([x / denom, -y / denom], axis=-1)
+
+        distorted = xy_proj * self.focal_lengths + self.principal_point
         return distorted

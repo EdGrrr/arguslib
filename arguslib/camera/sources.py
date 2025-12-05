@@ -21,9 +21,10 @@ class VideoFrameSource:
     """
 
     path: str  # local path only
+    timestamp_timezone: str = "UTC"
 
     def __post_init__(self):
-        self._video = Video(self.path)
+        self._video = Video(self.path, timestamp_timezone=self.timestamp_timezone)
 
     def time_bounds(self):
         return self._video.time_bounds

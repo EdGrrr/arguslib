@@ -15,7 +15,7 @@ ax = ai.show(
     dt.datetime(2025, 5, 1, 7, 41, 18),
     color_icao=True,
     trail_kwargs=dict(
-        plot_kwargs=dict(plotting_method="intersect_plot"), label_acft=True
+        label_acft=True
     ),
     tlen=30 * 60,
 )

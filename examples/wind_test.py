@@ -1,11 +1,7 @@
+# %%
 import arguslib
 import arguslib.misc
 import arguslib.misc.thermo
-import arguslib.aircraft
-import arguslib.instruments
-import arguslib.instruments.statuslib
-from arguslib.instruments.instruments import Position
-from arguslib.aircraft.fleet import Fleet
 import datetime
 from netCDF4 import Dataset
 import numpy as np
@@ -59,3 +55,5 @@ for i in range(24):
 # The expected windspeed is around 60kph, which is approximately the
 # 30 kts seen in the aircraft data. If the wind speeds are too fast in
 # the COBALT data, something else is going on here.
+
+# %%

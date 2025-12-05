@@ -10,10 +10,11 @@ ts_factor = 4
 
 
 class Video:
-    def __init__(self, filepath):
+    def __init__(self, filepath, timestamp_timezone="UTC"):
         self.filepath = filepath
         self.cap = cv2.VideoCapture(filepath)
         self.n_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.timestamp_timezone = timestamp_timezone
         self.time_bounds = self.get_timestamps([0, self.n_frames - 1])
 
     def get_data_time(self, dt, return_timestamp=False):
@@ -22,7 +23,7 @@ class Video:
         n = np.round(n).astype(int)
         frame = self.get_frame(n)
         if return_timestamp:
-            return frame, extract_timestamp(frame)
+            return frame, extract_timestamp(frame, timestamp_timezone=self.timestamp_timezone)
         return frame
 
     def get_frame(self, n):
@@ -43,13 +44,13 @@ class Video:
 
         for i in ns:
             frame = self.get_frame(i)
-            timestamps.append(extract_timestamp(frame))
+            timestamps.append(extract_timestamp(frame, timestamp_timezone=self.timestamp_timezone))
         return tuple(timestamps)
 
     def estimate_frame_number(self, dt):
-        if dt < self.time_bounds[0] or dt > self.time_bounds[1]:
+        if dt < (self.time_bounds[0] - datetime.timedelta(seconds=180)) or dt > (self.time_bounds[1] + datetime.timedelta(seconds=180)):
             raise ValueError(
-                f"Timestamp {dt} is not in the video time bounds for the video {self.filepath}"
+                f"Timestamp {dt} is not within 3 minute tolerance of video time bounds for the video {self.filepath}"
             )
         return np.interp(
             dt.timestamp(),
@@ -83,18 +84,49 @@ def create_timestamp():
     pass
 
 
-def extract_timestamp(image, ts_factor=ts_factor):
+def extract_timestamp(image, ts_factor=ts_factor, timestamp_timezone="UTC"):
     """Return a datetime object with the image timestamp to the nearest second."""
     image_ts_array = (image[0, 0 : (31 * ts_factor) : ts_factor, 0] > 128).astype("int")
     int_timestamp = int("".join(str(a) for a in image_ts_array), 2)
-    # return datetime.datetime.fromtimestamp(
-    #     int_timestamp
-    # )
+    
     local_time = datetime.datetime.fromtimestamp(
-        int_timestamp, tz=ZoneInfo("Europe/London")
+        int_timestamp, tz=ZoneInfo(timestamp_timezone)
     )
     utc_time = local_time.astimezone(utc)
     return utc_time.replace(tzinfo=None)  # Make "timezone naive" to be compatible.
+
+
+def get_video_time_bounds(filepath, timestamp_timezone="UTC"):
+    """
+    Get the start and end timestamps from a video file by reading the first and last frames.
+    """
+    cap = cv2.VideoCapture(filepath)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file {filepath}")
+
+    try:
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if n_frames < 1:
+            raise ValueError(f"Video {filepath} has no frames")
+
+        # Get first frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        ret, frame_start = cap.read()
+        if not ret:
+            raise ValueError(f"Could not read first frame from {filepath}")
+
+        # Get last frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, n_frames - 1)
+        ret, frame_end = cap.read()
+        if not ret:
+            raise ValueError(f"Could not read last frame from {filepath}")
+
+        start_time = extract_timestamp(frame_start, timestamp_timezone=timestamp_timezone)
+        end_time = extract_timestamp(frame_end, timestamp_timezone=timestamp_timezone)
+    finally:
+        cap.release()
+
+    return start_time, end_time
 
 
 def extract_exposure(image, ts_factor=ts_factor):

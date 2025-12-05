@@ -40,3 +40,9 @@ dev = [
 [build-system]
 requires = ["pdm-backend >= 2.4.0"]
 build-backend = "pdm.backend"
+
+[tool.pdm.build]
+includes = [
+  "arguslib/arguslib/defaults/*.yml",
+  "arguslib/arguslib/defaults/*.txt",
+]

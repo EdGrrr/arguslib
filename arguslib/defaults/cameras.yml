@@ -1,0 +1,71 @@
+---
+# Config for cameras
+# A dictionary of campaign names, each with a dictionary of camera names
+# Each camera has a type, position, and rotation (three angles, or one in the
+# case of a roll around a vertical optical axis.
+# 
+# 
+# All-sky cameras take a calibration yaml file. `calibration_file` is the path
+# to the camera calibration file, if null, the default file will be used
+# (arguslib/defaults/cobalt_3-7_calibration.yml).
+# 
+# Perspective cameras are currently set up to instead take focal lengths and
+# principal points only. The focal lengths are in pixels, and can be calculated
+# using the helper function arguslib.camera.calibration.focal_length_px.
+# 
+# Rotation angles are in degrees. They are are measured as:
+# 1. The angle measured up from the tangent plane towards the zenith axis
+#     (90 = pointing up, 0 = horizontal).
+# 2. The azimuth angle, measured clockwise from North (0 = North, 90 = East, etc.)
+# 3. The roll angle, measured clockwise when looking along the optical axis
+#     in the direction of view. (0 = no roll, positive = clockwise roll). 
+# 
+# The image axes can also be inverted using the `invert_axes` parameter,
+# which takes a list of two booleans [invert_x, invert_y].
+
+COBALT:
+    defaults:
+        camera_type: allsky
+        image_size_px: [3040, 3040]
+        timestamp_timezone: "Europe/London"
+    3-7:
+        calibration_file: cobalt_3-7_calibration.yml
+        position: [-1.439252, 51.146668, 0.1]
+        rotation: 15
+        timestamp_timezone: "Europe/London"
+    3-8:
+        calibration_file: null
+        position: [-1.438511, 51.149064, 0.1]
+        rotation: 160
+        timestamp_timezone: "Europe/London"
+    5-1:
+        calibration_file: null
+        position: [-1.363346, 50.952369, 0.1]
+        rotation: 70
+        timestamp_timezone: "Europe/London"
+    5-2:
+        calibration_file: null
+        position: [-1.141453, 51.147445, 0.1]
+        rotation: -80
+        timestamp_timezone: "Europe/London"
+    5-3:
+        calibration_file: null
+        position: [-1.443658, 51.320375, 0.1]
+        rotation: 45
+        timestamp_timezone: "Europe/London"
+    5-4:
+        calibration_file: null
+        position: [-1.78568, 51.09967, 0.1]
+        rotation: -115
+        timestamp_timezone: "Europe/London"
+    2-11:
+        camera_type: perspective
+        focal_lengths: [1964.7550435869148, 1964.7550435869148] 
+        # calculated from sensor size and focal length in mm (arguslib.camera.calibration.focal_length_px)
+        # Note: two different focal lengths implies non-square pixels, which is unnecessary over complication, but works in theory.
+        principal_point: [2304, 1296]
+        image_size_px: [4608, 2592]
+        position: [-0.1791071, 51.499189, 0.1]
+        rotation: [34, 260, 4]
+        invert_axes: [true, false]
+        timestamp_timezone: "Europe/London"

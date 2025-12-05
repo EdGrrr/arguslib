@@ -1,0 +1,17 @@
+---
+# Config for maps
+# These configs provide specifications for the Cartopy-maps-as-arguslib 
+# instruments infrastructre, which lives in `arguslib.maps`.
+
+uk_wide:
+  projection: "OSGB"
+  extent: [-14, 3, 49.8, 61] # [lon_min, lon_max, lat_min, lat_max]
+
+cobalt_local:
+  projection: "OSGB"
+  extent: [-2.5, 0, 50.5, 51.5]
+
+uk_france:
+  projection: "EuroPP"
+  extent: [-10, 5, 45, 60]
+  show_ocean: false

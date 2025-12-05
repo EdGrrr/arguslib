@@ -420,12 +420,12 @@ class Fleet:
             for acft in aircraft_list:
                 metafile.write(f"{acft} {self.aircraft[acft].atype}\n")
 
-    def load_output(self, filename):
+    def load_output(self, filename, force_reload=False):
         # import pickle
         # with open(filename, 'rb') as f:
         #     self.aircraft = pickle.load(f)
 
-        if self.loaded_file == filename:
+        if self.loaded_file == filename and not force_reload:
             return
 
         print(f"Loading ADS-B data from: {filename}")

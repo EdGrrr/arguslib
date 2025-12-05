@@ -1,3 +1,12 @@
+---
+# A calibration file for an all-sky camera.
+# This is a calibration file, containing extrinsic and intrinsic parameters for
+# one of the ARGUS all-sky cameras used in the COBALT campaign.
+# 
+# This is used as a fall-back default for calibration parameters for all-sky
+# cameras if no other is supplied.
+
+
 extrinsics:
 - - - 0.8587313585475936
     - -0.5115024876523302

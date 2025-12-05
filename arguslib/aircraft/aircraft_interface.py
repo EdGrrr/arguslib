@@ -4,7 +4,12 @@ import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
-from arguslib.misc.plotting import get_timestamp_from_ax
+from torch import le
+from arguslib.config import load_config
+from tqdm import tqdm
+
+
+from arguslib.misc.plotting import get_fig_from_ax_or_axs, get_timestamp_from_ax
 
 from ..misc.geo import ft_to_km
 from ..protocols import DirectRenderable, ProvidesRadarScanTime
@@ -97,10 +102,8 @@ class AircraftInterface(PlottableInstrument):
         """
 
         if adsb_data_dir is None:
-            from arguslib.config import load_path_from_config
-
             try:
-                adsb_data_dir = load_path_from_config("adsb_path.txt")
+                adsb_data_dir = load_config("adsb_path.txt")
             except FileNotFoundError:
                 raise FileNotFoundError(
                     "ADS-B data directory not specified and 'adsb_path.txt' not found."
@@ -247,10 +250,10 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
+                **(trail_plot_args|
+                {'color': "r",
+                'marker': "o",
+                'markersize': 2} | plot_plane_kwargs),
             )
 
         if plotting_method == "intersect_plot":
@@ -269,15 +272,16 @@ class AircraftInterface(PlottableInstrument):
                 intersect_chunk_size / 2,
             )
             plotted_icaos = []
-            for t, (ti, tf) in zip(
+            for t, (ti, tf) in tqdm(zip(
                 times_midpoints, zip(times_edges[:-2], times_edges[2:])
-            ):
+            ), total=len(times_midpoints), desc="Processing radar intersections in time chunks..."):
                 dict_positions = self.get_trail_positions(
                     datetime.datetime.fromtimestamp(t),
                     icao_include=icao_include,
                     **kwargs,
                 )
-                for acft, (positions, ages) in dict_positions.items():
+                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions), leave=False):
+                    # this long loop is slowing things down...
                     if acft in plotted_icaos:
                         continue
 
@@ -312,33 +316,49 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                color="r",
-                marker="o",
-                markersize=2,
-                **trail_plot_args,
-            )
+                **(trail_plot_args | 
+                {'color': "r",
+                'marker': "o",
+                'markersize': 2} | plot_plane_kwargs
+            ))
 
-        ax.get_figure().canvas.draw()
+        
+        if ax is None:
+            return  # nothing more to do for DirectCamera case.
+        get_fig_from_ax_or_axs(ax).canvas.draw()
 
-        boundary_path = ax.patch.get_path()
-        transform = ax.patch.get_transform()
-        transformed_boundary = boundary_path.transformed(transform)
-        # data_bbox = Bbox.from_bounds(*transformed_boundary.get_extents().bounds)
+        if isinstance(ax, tuple): # the complicated case of likely a radar interface.
+            axes = []
+            for a in ax:
+                if not hasattr(a, "flat"):
+                    axes.append(a)
+                else:
+                    axes.extend(a.flat)
+        elif not hasattr(ax, "flat"):
+            axes = [ax]
+        else:
+            axes = ax.flat
+            
+        for ax_to_clean in axes:
+            boundary_path = ax_to_clean.patch.get_path()
+            transform = ax_to_clean.patch.get_transform()
+            transformed_boundary = boundary_path.transformed(transform)
+            # data_bbox = Bbox.from_bounds(*transformed_boundary.get_extents().bounds)
 
-        artists = ax.get_children()
-        trail_artists = [
-            a
-            for a in artists
-            if isinstance(a, Line2D)
-            and a.get_label()
-            != "_nolegend_"  # Exclude behind the scenes lines (like axis lines)
-        ]
-        for artist in trail_artists:
-            artist_bbox = artist.get_window_extent()
+            artists = ax_to_clean.get_children()
+            trail_artists = [
+                a
+                for a in artists
+                if isinstance(a, Line2D)
+                and a.get_label()
+                != "_nolegend_"  # Exclude behind the scenes lines (like axis lines)
+            ]
+            for artist in trail_artists:
+                artist_bbox = artist.get_window_extent()
 
-            # Check for intersection with the precise boundary path
-            if not transformed_boundary.intersects_bbox(artist_bbox):
-                artist.remove()
+                # Check for intersection with the precise boundary path
+                if not transformed_boundary.intersects_bbox(artist_bbox):
+                    artist.remove()
 
     def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)

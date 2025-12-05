@@ -75,7 +75,7 @@ class RadarData:
                         seconds=scan_duration_seconds
                     )
 
-                    if scan_start_time <= dt <= scan_end_time:
+                    if scan_start_time.replace(microsecond=0) <= dt <= scan_end_time.replace(microsecond=0) + datetime.timedelta(seconds=1):
                         return self.radar_data
                 else:
                     # Cached data is invalid or incomplete, invalidate
@@ -166,27 +166,27 @@ class RadarData:
                     ):
                         return f_path
 
-                #     # If file starts significantly after dt, skip.
-                #     if file_start_dt_from_name > dt + datetime.timedelta(minutes=5): # Grace for dt slightly before actual scan
-                #         continue
-                #     # If file (estimated) ends significantly before dt, skip.
-                #     max_estimated_scan_duration = datetime.timedelta(minutes=15) # Generous estimate
-                #     if file_start_dt_from_name + max_estimated_scan_duration < dt:
-                #         continue
+                    # If file starts significantly after dt, skip.
+                    if file_start_dt_from_name > dt + datetime.timedelta(minutes=5): # Grace for dt slightly before actual scan
+                        continue
+                    # If file (estimated) ends significantly before dt, skip.
+                    max_estimated_scan_duration = datetime.timedelta(minutes=15) # Generous estimate
+                    if file_start_dt_from_name + max_estimated_scan_duration < dt:
+                        continue
 
-                # # Read the radar file to get its precise time coverage
-                # radar_obj = pyart.io.read(f_path)
+                # Read the radar file to get its precise time coverage
+                radar_obj = pyart.io.read(f_path)
 
-                # actual_scan_start_time = pyart.util.datetime_from_radar(radar_obj)
+                actual_scan_start_time = pyart.util.datetime_from_radar(radar_obj)
 
-                # if not (hasattr(radar_obj, 'time') and 'data' in radar_obj.time and radar_obj.time['data'].size > 0):
-                #     continue # Skip if no valid time data
+                if not (hasattr(radar_obj, 'time') and 'data' in radar_obj.time and radar_obj.time['data'].size > 0):
+                    continue # Skip if no valid time data
 
-                # scan_duration_seconds = radar_obj.time['data'][-1] - radar_obj.time['data'][0]
-                # actual_scan_end_time = actual_scan_start_time + datetime.timedelta(seconds=scan_duration_seconds)
+                scan_duration_seconds = radar_obj.time['data'][-1] - radar_obj.time['data'][0]
+                actual_scan_end_time = actual_scan_start_time + datetime.timedelta(seconds=scan_duration_seconds)
 
-                # if actual_scan_start_time <= dt <= actual_scan_end_time:
-                #     return f_path # Found a file whose scan duration covers dt
+                if actual_scan_start_time <= dt <= actual_scan_end_time:
+                    return f_path # Found a file whose scan duration covers dt
 
             except FileNotFoundError:
                 # Log or handle if a file listed by locator is not found
