@@ -5,7 +5,6 @@ import datetime
 from pathlib import Path
 
 from arguslib import AircraftInterface, RadarInterface, Radar, UndistortedCamera
-from arguslib.misc.geo import ft_to_km
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
 outdir = Path(__file__).parent / "output" / "camera_radar_quicklooks"
@@ -36,7 +35,6 @@ ax_cam, ax_radar = cai.show(
         # ],
         "plot_kwargs": {
             "alpha": 0.5,
-            "radar_kwargs": {"plotting_method": "intersect_plot"},
         },
         # "advection_winds":'aircraft'
     },
@@ -45,12 +43,4 @@ ax_cam, ax_radar = cai.show(
 
 ax_radar.legend(ncol=4, fontsize="small")
 
-# %%
-from arguslib.misc.geo import ft_to_km
-
-ft_to_km(cai.fleet.get_tracks(dt)["407f7b"][-1])
-# %%
-from arguslib.instruments import Position
-
-radar.position.target_ead(Position(radar.position.lon, radar.position.lat, 10))
 # %%

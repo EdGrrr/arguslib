@@ -2,7 +2,6 @@
 import datetime as dt
 
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 
 from arguslib import (
     MapInstrument,
@@ -96,8 +95,6 @@ plot_range_rings(
     ranges=[10],
     label="10 km range",
 )
-ax.add_feature(cfeature.LAND)
-ax.add_feature(cfeature.OCEAN)
 
 multicam.show(dt.datetime(2025, 5, 1, 7, 25, 6))
 

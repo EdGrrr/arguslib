@@ -11,7 +11,7 @@ outdir.mkdir(exist_ok=True, parents=True)
 # %%
 # --- Using VideoInterface for camera-only video ---
 video_iface = VideoInterface(cam)
-output_video_file = outdir / f"cam_video_{dt_start.isoformat(timespec='minutes')}.mp4"
+output_video_file = outdir / f"cam_video_{dt_start.strftime('%Y-%m-%d_%H%M')}.mp4"
 
 num_frames = 90
 video_iface.generate_video(
@@ -31,7 +31,7 @@ aci.load_flight_data(dt_start)
 video_iface_with_trails = VideoInterface(aci)  # Uses the same 'cam' instance
 
 output_video_file_trails = (
-    outdir / f"trails_video_{dt_start.isoformat(timespec='minutes')}.mp4"
+    outdir / f"trails_video_{dt_start.strftime('%Y-%m-%d_%H%M')}.mp4"
 )
 
 
@@ -41,10 +41,13 @@ video_iface_with_trails.generate_video(
     start_dt=dt_start,
     end_dt=dt_start + datetime.timedelta(minutes=num_frames - 1),
     step_timedelta=datetime.timedelta(minutes=1),
-    fps=4,  # From your original example
+    fps=4,
     show_kwargs={
         "brightness_adjust": 1.0,
         "tlen": 15 * 60,
     },  # Optional: kwargs for DirectCamera.show
     time_overlay=True,  # Optional: to add timestamp on frames
 )
+# takes some time to render...
+
+# %%

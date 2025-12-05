@@ -2,10 +2,8 @@ from arguslib.instruments.instruments import Instrument, Position
 from arguslib.misc.plotting import TimestampedFigure, plot_beam
 from arguslib.misc.interpolation import interpolate_to_intersection
 
-import datetime
 import numpy as np
 import pyart
-import yaml
 
 
 from pathlib import Path
@@ -16,6 +14,7 @@ class Radar(Instrument):
     def __init__(self, beamwidth, *args, **kwargs):
         self.beamwidth = beamwidth
         super().__init__(*args, **kwargs)
+        self.initialise_data_loader()
 
     def beam(self, radar_elevation, radar_azimuth, radar_distances):
         if self.beamwidth:

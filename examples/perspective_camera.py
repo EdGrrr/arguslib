@@ -1,7 +1,6 @@
 # %%
 
 from datetime import datetime
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 from arguslib import AircraftInterface, Camera
@@ -17,12 +16,14 @@ for h in range(13, 18):
 
 # %%
 
+dt = datetime(2025, 5, 1, 8, 21, 43)
+
 cai = AircraftInterface(cam)
 
 adsb_datadir = Path("/disk1/Data/ADS-B/COBALT/")
 cai.fleet.load_output(str(adsb_datadir / (dt.strftime("%Y%m%d") + "_ADS-B")))
 
-cai.show(dt, tlen=30 * 60, trail_kwargs={"wind_filter":10, "plot_kwargs": {"max_range_km": 1000, 'lw': 0.5, 'alpha': 0.5}})
+cai.show(dt, tlen=20 * 60, trail_kwargs={"wind_filter":10, "plot_kwargs": {"max_range_km": 100, 'lw': 0.5, 'alpha': 0.5}})
 
 # # %%
 

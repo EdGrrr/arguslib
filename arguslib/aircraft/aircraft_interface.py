@@ -3,7 +3,10 @@ import numpy as np
 import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
+
+from torch import le
 from arguslib.config import load_config
+from tqdm import tqdm
 
 
 from arguslib.misc.plotting import get_fig_from_ax_or_axs, get_timestamp_from_ax
@@ -269,15 +272,16 @@ class AircraftInterface(PlottableInstrument):
                 intersect_chunk_size / 2,
             )
             plotted_icaos = []
-            for t, (ti, tf) in zip(
+            for t, (ti, tf) in tqdm(zip(
                 times_midpoints, zip(times_edges[:-2], times_edges[2:])
-            ):
+            ), total=len(times_midpoints), desc="Processing chunks of radar..."):
                 dict_positions = self.get_trail_positions(
                     datetime.datetime.fromtimestamp(t),
                     icao_include=icao_include,
                     **kwargs,
                 )
-                for acft, (positions, ages) in dict_positions.items():
+                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions)):
+                    # this long loop is slowing things down...
                     if acft in plotted_icaos:
                         continue
 
@@ -315,9 +319,12 @@ class AircraftInterface(PlottableInstrument):
                 **(trail_plot_args | 
                 {'color': "r",
                 'marker': "o",
-                'markersize': 2} | plot_plane_kwargs,
+                'markersize': 2} | plot_plane_kwargs
             ))
 
+        
+        if ax is None:
+            return  # nothing more to do for DirectCamera case.
         get_fig_from_ax_or_axs(ax).canvas.draw()
 
         if isinstance(ax, tuple): # the complicated case of likely a radar interface.
