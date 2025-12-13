@@ -4,7 +4,6 @@ import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
-from torch import le
 from arguslib.config import load_config
 from tqdm import tqdm
 
