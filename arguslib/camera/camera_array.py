@@ -7,7 +7,10 @@ from ..instruments.instruments import PlottableInstrument, Position
 
 
 class CameraArray(PlottableInstrument):
-    def __init__(self, cameras: list[Camera], layout_shape: tuple[int, int]):
+    def __init__(self,
+                 cameras: list[Camera],
+                 layout_shape: tuple[int, int],
+                 positions: list[tuple[int, int]] = None):
         self.cameras = cameras
         self.layout_shape = layout_shape
 
@@ -18,7 +21,10 @@ class CameraArray(PlottableInstrument):
 
         attrs = {"camstr": [c.attrs["camstr"] for c in cameras]}
 
-        self.positions = self.infer_positions()
+        if positions is None:
+            self.positions = self.infer_positions()
+        else:
+            self.positions = positions
 
         super().__init__(**attrs)
 
@@ -38,11 +44,16 @@ class CameraArray(PlottableInstrument):
         ]
         # will ignore config if kwargs contains any of the keys in camera_config
 
-        return cls(cameras, array_config["layout_shape"])
+        if 'positions' not in array_config.keys():
+            array_config["positions"] = None
+        
+        return cls(cameras, array_config["layout_shape"], array_config["positions"])
 
     def infer_positions(self) -> list[tuple[int, int]]:
         """
         Infer the positions of the cameras in the layout, based on the lat/lon under the camera Camera.Position properties.
+
+        If the property 'positions' in given the the camera_array.yml file, use that instead.
         """
         latitudes = [c.position.lat for c in self.cameras]
         longitudes = [c.position.lon for c in self.cameras]
