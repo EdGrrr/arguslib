@@ -206,11 +206,11 @@ class CameraArray(PlottableInstrument):
         """
         for i in range(self.layout_shape[0]):
             for j in range(self.layout_shape[1]):
-                ax_cam = ax[self.layout_shape[1] - j - 1, i]
+                ax_cam = ax[i, j]
                 camera = [
                     c
                     for i_cam, c in enumerate(self.cameras)
-                    if self.positions[i_cam] == (i, j)
+                    if list(self.positions[i_cam]) == [i, j]
                 ]
                 if len(camera) == 0:
                     continue
