@@ -69,3 +69,71 @@ COBALT:
         rotation: [34, 260, 4]
         invert_axes: [true, false]
         timestamp_timezone: "Europe/London"
+
+
+WesCon:
+  default:
+    invert_axes: [true, false]
+  3-1:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]
+    principal_point: [640, 480]
+    position: [-1.4784, 51.123043, 0.124]
+    distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+    rotation: [20, 50, 180]
+    timestamp_timezone: "Europe/London"
+  3-2:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]
+    principal_point: [640, 480]
+    position: [-1.4759, 51.12249, 0.130]
+    rotation: [20, 50, 180]
+    timestamp_timezone: "Europe/London"
+  3-3:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]
+    principal_point: [640, 480]
+    position: [-1.3688, 51.14744, 0.123]
+    rotation: [20, 265, 180]
+    timestamp_timezone: "Europe/London"
+  3-4:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]
+    principal_point: [640, 480]
+    position: [-1.3691, 51.14907, 0.128]
+    rotation: [20, 265, 180]
+    timestamp_timezone: "Europe/London"
+  3-5:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]o
+    principal_point: [640, 480]
+    position: [-1.4927, 51.165108, 0.117]
+    rotation: [20, 130, 180]
+    timestamp_timezone: "Europe/London"
+  3-6:
+    camera_type: perspective
+    focal_lengths: [1058.0, 1058.0]
+    image_size_px: [1280, 960]
+    principal_point: [640, 480]
+    position: [-1.48874, 51.16718, 0.110]
+    rotation: [20, 130, 180]
+    timestamp_timezone: "Europe/London"
+  3-7:
+    camera_type: allsky
+    calibration_file:  cobalt_3-7_calibration.yml
+    image_size_px: [3040, 3040]
+    position: [-1.439252, 51.146668, 0.1]
+    rotation: 195
+    timestamp_timezone: "Europe/London"
+  3-8:
+    camera_type: allsky
+    calibration_file:  null
+    image_size_px: [3040, 3040]
+    position: [-1.438511, 51.149064, 0.1]
+    rotation: 160
+    timestamp_timezone: "Europe/London"

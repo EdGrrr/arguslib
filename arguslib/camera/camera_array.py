@@ -7,7 +7,10 @@ from ..instruments.instruments import PlottableInstrument, Position
 
 
 class CameraArray(PlottableInstrument):
-    def __init__(self, cameras: list[Camera], layout_shape: tuple[int, int]):
+    def __init__(self,
+                 cameras: list[Camera],
+                 layout_shape: tuple[int, int],
+                 positions: list[tuple[int, int]] = None):
         self.cameras = cameras
         self.layout_shape = layout_shape
 
@@ -18,7 +21,10 @@ class CameraArray(PlottableInstrument):
 
         attrs = {"camstr": [c.attrs["camstr"] for c in cameras]}
 
-        self.positions = self.infer_positions()
+        if positions is None:
+            self.positions = self.infer_positions()
+        else:
+            self.positions = positions
 
         super().__init__(**attrs)
 
@@ -38,11 +44,16 @@ class CameraArray(PlottableInstrument):
         ]
         # will ignore config if kwargs contains any of the keys in camera_config
 
-        return cls(cameras, array_config["layout_shape"])
+        if 'positions' not in array_config.keys():
+            array_config["positions"] = None
+        
+        return cls(cameras, array_config["layout_shape"], array_config["positions"])
 
     def infer_positions(self) -> list[tuple[int, int]]:
         """
         Infer the positions of the cameras in the layout, based on the lat/lon under the camera Camera.Position properties.
+
+        If the property 'positions' in given the the camera_array.yml file, use that instead.
         """
         latitudes = [c.position.lat for c in self.cameras]
         longitudes = [c.position.lon for c in self.cameras]
@@ -111,6 +122,8 @@ class CameraArray(PlottableInstrument):
         """
         Show the camera array on a map.
         """
+        axes = None # If this is replaced by a list, ue that, otherwise create as needed
+        
         if replace_ax is not None:
             # we need to get the positon of the axis in the figure, and replace it with the new array of subplots...
             fig = replace_ax.figure
@@ -119,42 +132,46 @@ class CameraArray(PlottableInstrument):
             subfig = fig.add_subfigure(
                 pos,
             )
-            axes = subfig.subplots(
-                self.layout_shape[0],
-                self.layout_shape[1],
-                subplot_kw={"projection": "polar"},
-            )
         elif ax is None:
-            fig, axes = plt.subplots(
-                self.layout_shape[0],
-                self.layout_shape[1],
-                subplot_kw={"projection": "polar"},
-                figsize=(8, 8),
-                constrained_layout=True,
-            )
+            # Will create axes as needed below
+            subfig = plt.figure(figsize=(8,8), layout="constrained")
         else:
             if isinstance(ax, np.ndarray):
                 axes = ax
             else:
                 return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
 
+        output_axes = np.full(self.layout_shape, None)
         fail_counts = 0
         for i in range(self.layout_shape[0]):
             for j in range(self.layout_shape[1]):
-                ax = axes[self.layout_shape[1] - j - 1, i]
+                # Find a camera matching this location
                 camera = [
                     c
                     for i_cam, c in enumerate(self.cameras)
-                    if self.positions[i_cam] == (i, j)
+                    if list(self.positions[i_cam]) == [i, j]
                 ]
                 if len(camera) == 0:
-                    try:
-                        ax.remove()
-                    except KeyError:
-                        # if the axis is already removed, we can just ignore it
-                        pass
                     continue
                 camera = camera[0]
+
+                # If there is a camera, create/used an axes object
+                if axes is not None:
+                    # Pick an axes if a list was passed
+                    ax = axes[self.layout_shape[1] - j - 1, i]
+                else:
+                    if camera.camera_type == 'allsky':
+                        ax = plt.subplot2grid(
+                            self.layout_shape,
+                            (self.layout_shape[1] - j - 1, i),
+                            fig=subfig,
+                            projection='polar')
+                    else:
+                        ax = plt.subplot2grid(
+                            self.layout_shape,
+                            (self.layout_shape[1] - j - 1, i),
+                            fig=subfig)
+
                 ax = camera.show(
                     dt,
                     pos=f"{self.layout_shape[0]}{self.layout_shape[1]}{3*i+j}",
@@ -165,7 +182,8 @@ class CameraArray(PlottableInstrument):
                 # check if it failed
                 if ax.get_images() == []:
                     fail_counts += 1
-                ax.set_thetagrids(np.arange(0, 360, 45), labels=[])
+                if camera.camera_type == 'allsky':
+                    ax.set_thetagrids(np.arange(0, 360, 45), labels=[])
                 if label_cameras:
                     ax.text(
                         0.15,
@@ -176,10 +194,11 @@ class CameraArray(PlottableInstrument):
                         transform=ax.transAxes,
                         fontsize="small",
                     )
+                output_axes[i, j] = ax
         if fail_counts == len(self.cameras):
             raise FileNotFoundError("No camera data found for this time.")
 
-        return axes
+        return np.array(output_axes)
 
     def annotate_positions(self, positions, dt, ax, *args, **kwargs):
         """
@@ -187,11 +206,11 @@ class CameraArray(PlottableInstrument):
         """
         for i in range(self.layout_shape[0]):
             for j in range(self.layout_shape[1]):
-                ax_cam = ax[self.layout_shape[1] - j - 1, i]
+                ax_cam = ax[i, j]
                 camera = [
                     c
                     for i_cam, c in enumerate(self.cameras)
-                    if self.positions[i_cam] == (i, j)
+                    if list(self.positions[i_cam]) == [i, j]
                 ]
                 if len(camera) == 0:
                     continue
