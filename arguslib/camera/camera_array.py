@@ -171,6 +171,7 @@ class CameraArray(PlottableInstrument):
                             self.layout_shape,
                             (self.layout_shape[1] - j - 1, i),
                             fig=subfig)
+                        ax.axis('off')
 
                 ax = camera.show(
                     dt,
