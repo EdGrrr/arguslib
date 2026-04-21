@@ -151,7 +151,7 @@ class AircraftInterface(PlottableInstrument):
                 )
 
     def get_trails(self, time, **kwargs):
-        kwargs = {"wind_filter": -1, "tlen": 3600, "include_time": True} | kwargs
+        kwargs = {"tlen": 3600, "include_time": True} | kwargs
         return self.fleet.get_trails(time, **kwargs)
 
     def show(self, dt, ax=None, tlen=3600, color_icao=False, trail_kwargs={}, **kwargs):
@@ -182,7 +182,7 @@ class AircraftInterface(PlottableInstrument):
         advection_winds="era5",
         **kwargs,
     ):
-        kwargs = {"wind_filter": -1, "tlen": 3600, "adjust_mps": adjust_mps} | kwargs
+        kwargs = {"tlen": 3600, "adjust_mps": adjust_mps} | kwargs
 
         plot_trails_kwargs = (
             {"plotting_method": "intersect_plot"}

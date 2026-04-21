@@ -72,10 +72,16 @@ class Fleet:
     def write_output(self, filename):
         raise NotImplementedError('Not expected for a read-only class')
 
-    def load_output(self, filename, force_reload=False, wind_filter=-1):
+    def load_output(self, filename, force_reload=False, wind_filter=None):
         '''Load a set of position data. This creates a new flightlocs
         object, as this is simpler than updating in-place'''
 
+        if wind_filter is None:
+            if self.flightlocs.wind_filter_window:
+                wind_filter = self.flightlocs.wind_filter_window
+            else:
+                wind_filter = -1
+        
         # Work out the year/doy combination from the filename,
         # assuming the data is still using the cobalt filenames
         basename = os.path.basename(filename)
@@ -83,7 +89,9 @@ class Fleet:
         year, doy = csat2.misc.time.date_to_doy(year, mon, day)
 
         # A negative wind_filter avoids activation
-        self.flightlocs = COBALTFlightLocs(year, doy, wind_data=True, wind_filter_window=wind_filter)
+        self.flightlocs = COBALTFlightLocs(year, doy,
+                                           wind_data=True,
+                                           wind_filter_window=wind_filter)
         self.flight_tracker = ContrailLocsFixed(
             self.flightlocs,
             winddata=None,
@@ -172,7 +180,7 @@ class Fleet:
             dtime,
             tlen=2 * 60 * 60,
             spread_velocity=-1,
-            wind_filter=-1,
+            wind_filter=None,
             include_time=False,
             include_alt=False,
             winds="era5",
