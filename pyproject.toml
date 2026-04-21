@@ -17,6 +17,7 @@ dependencies = [
 'tqdm',
 'typing-extensions',
 'csat2 @ git+https://github.com/EdGrrr/csat2.git',
+'trackerlib @ git+https://github.com/EdGrrr/trackerlib.git',
 ]
 authors = [
 {name = 'Edward Gryspeerdt', email='e.gryspeerdt@imperial.ac.uk'},
