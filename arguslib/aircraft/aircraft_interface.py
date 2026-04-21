@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from arguslib.misc.plotting import get_fig_from_ax_or_axs, get_timestamp_from_ax
 
-from ..misc.geo import ft_to_km
+from ..misc.geo import ft_to_km, haversine
 from ..protocols import DirectRenderable, ProvidesRadarScanTime
 
 from ..instruments.instruments import PlottableInstrument
@@ -367,6 +367,33 @@ class AircraftInterface(PlottableInstrument):
             tlen=kwargs["tlen"],
         )
 
+        # Here we want to filter the trails (if possible) for othly those that pass within 30km of Chilbolton
+        # Using trackerlib
+
+        try:
+            # TODO: We almost certainly do want to fix this to the
+            # radar, but I am not clear how to address this here
+            cao = self.camera.radar.position # Assume we care about
+                                            # distance from the radar
+                                            # here.
+            dist_limit = 30 # radar range limit in km
+
+            trail_array = self.fleet.get_trails_arr(timestamp, kwargs["tlen"])
+            dists = haversine(trail_array[:, :, 0],
+                              trail_array[:, :, 1],
+                              cao.lon,
+                              cao.lat)
+            valid_inds = np.where((dists<dist_limit).sum(axis=1)>0)
+            valid_ids = np.array(self.fleet.get_ids())[valid_inds].tolist()
+
+            if icao_include is not None:
+                icao_include += valid_ids
+            else:
+                icao_include = valid_ids
+        except AttributeError:
+            # If the fleet class doesn't have array output implmented
+            pass
+                
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
