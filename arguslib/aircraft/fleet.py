@@ -1,10 +1,16 @@
 from arguslib.misc.met import download_era5_winds
 from arguslib.misc.times import convert_to_london_naive
+from trackerlib.locations import COBALTFlightLocs
+from trackerlib.tracker import ContrailLocsFixed
 import numpy as np
 import netCDF4
 import tqdm
 import datetime
 import pandas as pd
+import csat2
+import csat2.misc.time
+import os
+import os.path
 
 from ..misc import geo
 import xarray as xr
@@ -34,6 +40,184 @@ def jsonfloat(value):
     else:
         return -9999999
 
+
+class Fleet:
+    def __init__(self, time_resolution=15, variables=["lon", "lat", "alt_geom"]):
+        self.aircraft = {}
+        self.variables = variables
+        self.flightlocs = None
+        self.time_resolution = time_resolution
+        self.flight_tracker = None
+
+        self.loaded_file = None
+
+    def add_data(self, dtime, acdata):
+        raise NotImplementedError('Not expected for a read-only class')
+
+    def has_notnull_data(self, var):
+        if var not in self.variables:
+            return False
+
+        if np.any(np.isfinite(self.flightlocs.get_data(var))):
+            return True
+        return False
+
+    def update_internal(self):
+        raise NotImplementedError('Not expected for a read-only class')
+
+    def __repr__(self):
+        return (
+            f"Fleet: {len(self.flightlocs.get_atypes())} aircraft")
+
+    def write_output(self, filename):
+        raise NotImplementedError('Not expected for a read-only class')
+
+    def load_output(self, filename, force_reload=False, wind_filter=-1):
+        '''Load a set of position data. This creates a new flightlocs
+        object, as this is simpler than updating in-place'''
+
+        # Work out the year/doy combination from the filename,
+        # assuming the data is still using the cobalt filenames
+        basename = os.path.basename(filename)
+        year, mon, day = int(basename[:4]), int(basename[4:6]), int(basename[6:8])
+        year, doy = csat2.misc.time.date_to_doy(year, mon, day)
+
+        # A negative wind_filter avoids activation
+        self.flightlocs = COBALTFlightLocs(year, doy, wind_data=True, wind_filter_window=wind_filter)
+        self.flight_tracker = ContrailLocsFixed(
+            self.flightlocs,
+            winddata=None,
+            init_time = csat2.misc.time.ydh_to_datetime(year, doy, 12),
+            intstep=datetime.timedelta(seconds=self.time_resolution),
+            trail_length_hours=2)
+        self.loaded_file = basename
+        if len(self.flightlocs)>0:
+            self.aircraft = True
+
+    def _trim_array(self, data, tlen):
+        end_index = int(tlen/self.time_resolution)+2
+        return data[:, -end_index:]
+        
+    def list_current(self):
+        return self.flightlocs.get_flightids()
+    
+    def get_current(self, dtime, vname=None):
+        '''Returns the value of a variable at a given datetime if there is valid position data'''
+        ids = self.flightlocs.get_flightids()
+        lon = self.flightlocs.get_data_time(dtime, 'lon')['lon']
+        lat = self.flightlocs.get_data_time(dtime, 'lat')['lat']
+        valid_ind = np.isfinite(lon+lat)
+        data = self.flightlocs.get_data_time(dtime, vname)
+        outdata = {ids[a] :{name: data[name][a] for name in data.keys()} for a in np.where(valid_ind)[0]}
+        return outdata
+
+    def interpolate_position(self, acft, dtime, alt_var="alt_geom"):
+        daysec = dtime.hour * 3600 + dtime.minute * 60 + dtime.second
+        index = daysec // self.time_resolution
+        # index before the current pos
+        # different to get_trail's index, which indexes up to (and includes) this.
+
+        daysec_us = daysec + dtime.microsecond * 1e-6
+
+        ac_index = self.flightlocs.get_flightids().index(acft)
+        
+        # Collect the values either side of the aircraft
+        time = (daysec_us - self.flightlocs.data['times'])[
+            index : index + 2
+        ]  # Time since the aircraft passed this point
+        lon = self.flightlocs.data['lon'][ac_index, index : index + 2]
+        lat = self.flightlocs.data['lat'][ac_index, index : index + 2]
+        alt = self.flightlocs.data[alt_var][ac_index, index : index + 2]
+
+        pos = np.array([lon, lat, alt])
+        # Handle NaNs that might arise from slicing at the edge
+        if np.any(np.isnan(pos)) or np.any(np.isnan(time)):
+            return np.array([np.nan, np.nan, np.nan])
+
+        dpos_dtime = (pos[:, 1] - pos[:, 0]) / (time[1] - time[0])
+        pos = pos[:, 0] + (0 - time[0]) * dpos_dtime
+
+        return pos
+
+    def get_ids(self):
+        return self.flightlocs.get_flightids()
+
+    def get_tracks(self, *args, **kwargs):
+        tracks = self.get_tracks_arr(*args, **kwargs)
+        ids = self.flightlocs.get_flightids()
+        data = {ids[a]:tracks[a].T for a in range(len(ids))}
+        return data
+    
+    def get_tracks_arr(self, dtime, tlen=2 * 60 * 60, include_time=False):
+        self.flight_tracker.increment_until(dtime)
+        if include_time:
+            tracks = self._trim_array(
+                self._add_time(
+                    self.flight_tracker.get_emission_pos()), tlen)
+        else:
+            tracks = self._trim_array(
+                self.flight_tracker.get_emission_pos(), tlen)
+        return tracks
+            
+    def get_trails(
+            self,
+            *args, **kwargs):
+        trails = self.get_trails_arr(*args, **kwargs)
+        ids = self.flightlocs.get_flightids()
+        data = {ids[a]:trails[a].T for a in range(len(ids))}
+        return data
+
+    def get_trails_arr(
+            self,
+            dtime,
+            tlen=2 * 60 * 60,
+            spread_velocity=-1,
+            wind_filter=-1,
+            include_time=False,
+            include_alt=False,
+            winds="era5",
+            adjust_mps=(0, 0),
+    ):
+        self.flight_tracker.increment_until(dtime)
+        if include_alt:
+            end_val = 3
+        else:
+            end_val = 2
+        if include_time:
+            trails = self._trim_array(
+                self._add_time(
+                    self.flight_tracker.get_trail_pos()[:, :, :end_val]), tlen)
+        else:
+            trails = self._trim_array(
+                self.flight_tracker.get_trail_pos()[:, :, :end_val], tlen)
+        return trails    
+
+    def _add_time(self, data):
+        outdata = np.concat([
+            data,
+            np.fromfunction(lambda x, y: self.time_resolution*y, data.shape[:-1])[:, ::-1][..., None]
+        ], axis=-1)
+        return outdata
+
+    def get_data(self, dtime, vname, *args, **kwargs):
+        data = self.get_data_arr(dtime, vname, *args, **kwargs)
+        ids = self.flightlocs.get_flightids()
+        outdata = {ids[a] :{vname: data[vname][a]} for a in range(len(ids))}
+        return outdata
+
+    def get_data_arr(self, dtime, vname, tlen=2 * 60 * 60):
+        self.flight_tracker.increment_until(dtime)
+        data = self.flightlocs.get_data_time(dtime, vname, tlen)
+        return data
+        
+    def assign_era5_winds(self, _download_attempted_this_call=False):
+        # Get the 3D ERA5 winds for this array
+        pass
+
+    def load_3d_wind_field(dtime):
+        pass
+
+    
 
 class AircraftPos:
     def __init__(self, time_resolution=15, variables=["lon", "lat", "alt", "geom"]):
@@ -341,7 +525,7 @@ class Aircraft:
         return self.pos.get_data(dtime, vname, tlen)
 
 
-class Fleet:
+class FleetOld:
     def __init__(self, time_resolution=15, variables=["lon", "lat", "alt_geom"]):
         self.aircraft = {}
         self.variables = variables
@@ -420,7 +604,7 @@ class Fleet:
             for acft in aircraft_list:
                 metafile.write(f"{acft} {self.aircraft[acft].atype}\n")
 
-    def load_output(self, filename, force_reload=False):
+    def load_output(self, filename, force_reload=False, wind_filter=-1):
         # import pickle
         # with open(filename, 'rb') as f:
         #     self.aircraft = pickle.load(f)
@@ -508,6 +692,9 @@ class Fleet:
             if np.isfinite(tempdata["lon"] + tempdata["lat"]):
                 acdata[ac] = tempdata
         return acdata
+
+    def interpolate_position(self, acft, timestamp, alt_var="alt_geom"):
+        return self.aircraft[acft].pos.interpolate_position(timestamp, alt_var)
 
     def get_tracks(self, dtime, tlen=2 * 60 * 60, include_time=False):
         """Returns unadvected track position (lon, lat, alt, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)

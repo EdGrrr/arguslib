@@ -4,7 +4,6 @@ import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
-from torch import le
 from arguslib.config import load_config
 from tqdm import tqdm
 
@@ -16,7 +15,7 @@ from ..protocols import DirectRenderable, ProvidesRadarScanTime
 
 from ..instruments.instruments import PlottableInstrument
 from ..instruments import Position
-from .fleet import Fleet
+from .fleet import Fleet, FleetOld
 
 if TYPE_CHECKING:
     # This import is only for static type checkers, preventing runtime circular imports.
@@ -259,7 +258,7 @@ class AircraftInterface(PlottableInstrument):
         if plotting_method == "intersect_plot":
 
             # here we need to chunk up the radar, get trails at different times, and plot those.
-            intersect_chunk_size = 10  # s
+            intersect_chunk_size = 60  # s
 
             times_midpoints = np.arange(
                 self.start_time.timestamp() + intersect_chunk_size / 2,
@@ -280,7 +279,7 @@ class AircraftInterface(PlottableInstrument):
                     icao_include=icao_include,
                     **kwargs,
                 )
-                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions), leave=False):
+                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions), leave=False, disable=True):
                     # this long loop is slowing things down...
                     if acft in plotted_icaos:
                         continue
@@ -387,7 +386,7 @@ class AircraftInterface(PlottableInstrument):
             # Get the times array!
             ages = trail_latlons[acft][2]  # Assuming get_trails returns this
 
-            current_pos = self.fleet.aircraft[acft].pos.interpolate_position(timestamp)
+            current_pos = self.fleet.interpolate_position(acft, timestamp)
 
             # differentce between the current timestamp and the last point in the get_trails...
 
@@ -401,7 +400,7 @@ class AircraftInterface(PlottableInstrument):
 
             positions = [
                 Position(lon, lat, alt_m)
-                for lon, lat, alt_m in zip(lons, lats, alts_km)
+                for lon, lat, alt_m in zip(lons, lats, alts_km, strict=True)
             ]
             acfts.append(acft)
             positions_lists.append(positions)
