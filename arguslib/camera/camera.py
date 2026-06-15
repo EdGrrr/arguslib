@@ -297,19 +297,24 @@ class Camera(Instrument):
         Returns:
             matplotlib.axes.Axes: The axis on which the image was plotted.
         """
-        defaults = {"theta_behaviour": "bearing", "lr_flip": True}
+        if self.camera_type == 'perspective':
+            # Default to no flip for a perspective camera
+            defaults = {"theta_behaviour": "bearing", "lr_flip": False}
+        else:
+            # Infer setup for an allsky camera
+            defaults = {"theta_behaviour": "bearing", "lr_flip": True}
 
-        if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
-            # if theta_behaviour is set, assume lr_flip should be false, unless it's bearing
-            if kwargs["theta_behaviour"] != "bearing":
-                defaults["lr_flip"] = False
+            if "theta_behaviour" in kwargs and "lr_flip" not in kwargs:
+                # if theta_behaviour is set, assume lr_flip should be false, unless it's bearing
+                if kwargs["theta_behaviour"] != "bearing":
+                    defaults["lr_flip"] = False
 
-        if "lr_flip" in kwargs and "theta_behaviour" not in kwargs:
-            # if lr_flip is set, but we are inferring theta_behaviour, assume it's bearing if flipped, ordinal aligned if not flipped
-            if kwargs["lr_flip"]:
-                defaults["theta_behaviour"] = "bearing"
-            else:
-                defaults["theta_behaviour"] = "unflipped_ordinal_aligned"
+            if "lr_flip" in kwargs and "theta_behaviour" not in kwargs:
+                # if lr_flip is set, but we are inferring theta_behaviour, assume it's bearing if flipped, ordinal aligned if not flipped
+                if kwargs["lr_flip"]:
+                    defaults["theta_behaviour"] = "bearing"
+                else:
+                    defaults["theta_behaviour"] = "unflipped_ordinal_aligned"
 
         kwargs = defaults | kwargs
 
