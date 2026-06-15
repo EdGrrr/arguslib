@@ -89,7 +89,6 @@ class AircraftPos:
         wind_filter=-1,
         winds="era5",
         include_time=False,
-        adjust_mps=(0, 0),
     ):
         # The advected flight locations (based on the aircraft
         # measured windspeed for some time after dtime). If
@@ -131,11 +130,6 @@ class AircraftPos:
                 if include_time:
                     return np.full((3, len(lon)), np.nan)
                 return np.full((2, len(lon)), np.nan)
-
-        # Apply the adjustment before filtering or any other processing
-        if adjust_mps != (0, 0):
-            wind_u = wind_u + adjust_mps[0]
-            wind_v = wind_v + adjust_mps[1]
 
         # Use a NaN-aware rolling average to filter the winds
         if wind_filter > 0 and len(wind_u) > 0:
@@ -325,7 +319,6 @@ class Aircraft:
         winds="era5",
         wind_filter=-1,
         include_time=False,
-        adjust_mps=(0, 0),
     ):
         return self.pos.get_trail(
             dtime,
@@ -334,7 +327,6 @@ class Aircraft:
             wind_filter=wind_filter,
             include_time=include_time,
             winds=winds,
-            adjust_mps=adjust_mps,
         )
 
     def get_data(self, dtime, vname, tlen=2 * 60 * 60):
@@ -529,7 +521,6 @@ class Fleet:
         wind_filter=-1,
         include_time=False,
         winds="era5",
-        adjust_mps=(0, 0),
     ):
         """Returns trail position (lon, lat, and potentially time [in seconds befor dtime]) for now and every previous 15 sec until tlen (in min)
 
@@ -551,7 +542,6 @@ class Fleet:
                 wind_filter,
                 include_time,
                 winds="aircraft",
-                adjust_mps=adjust_mps,
             )
 
         trails = {}
@@ -563,7 +553,6 @@ class Fleet:
                 wind_filter=wind_filter,
                 include_time=include_time,
                 winds=winds,
-                adjust_mps=adjust_mps,
             )
         return trails
 

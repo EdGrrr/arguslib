@@ -67,6 +67,7 @@ class Camera(Instrument):
         time_offset_s=0.0,
         data_loader_class=None,
         invert_axes=[False, False],
+        manual_rotation_90degs=0,
         timestamp_timezone="UTC",
         **kwargs,
     ):
@@ -83,6 +84,7 @@ class Camera(Instrument):
         else:
             self._data_loader_class = data_loader_class
         self._invert_axes = invert_axes
+        self._manual_rotation_90degs = manual_rotation_90degs
         self.timestamp_timezone = timestamp_timezone
         super().__init__(*args, **kwargs)
 
@@ -251,13 +253,14 @@ class Camera(Instrument):
 
         LoaderClass = self._data_loader_class
         invert_axes = self._invert_axes
+        manual_rotations = self._manual_rotation_90degs
         
         if issubclass(LoaderClass, CameraData):
             kwargs = {"timestamp_timezone": getattr(self, "timestamp_timezone", "UTC")}
         else:
             kwargs = {}
 
-        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"], invert_axes=invert_axes, **kwargs)
+        self.data_loader = LoaderClass(self.attrs["campaign"], self.attrs["camstr"], invert_axes=invert_axes, manual_rotations=manual_rotations, **kwargs)
 
     @override
     def _show(
@@ -268,6 +271,7 @@ class Camera(Instrument):
         imshow_kw={},
         brightness_adjust=1.0,
         allow_timestamp_updates=True,
+        add_range_rings=True,
         **kwargs,
     ):
         """Renders the camera image for a given datetime on a Matplotlib axis.
@@ -349,7 +353,7 @@ class Camera(Instrument):
         is_polar = hasattr(ax, "set_theta_zero_location")
 
         # if polar axes, assume it's a camera axes with
-        transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
+        transform = get_pixel_transform(self, ax, lr_flip=lr_flip, rotate=theta_behaviour!='pixels')
         # if is_polar:
         #     transform = get_pixel_transform(self, ax, lr_flip=lr_flip)
         # else:
@@ -364,8 +368,9 @@ class Camera(Instrument):
         if is_polar:
             ax.set_rticks([])
         ax.grid(False)
-
-        plot_range_rings(self, self, dt, ax=ax)
+        
+        if add_range_rings:
+            plot_range_rings(self, self, dt, ax=ax)
 
         try:
             img, timestamp = self.get_data_time(dt, return_timestamp=True)

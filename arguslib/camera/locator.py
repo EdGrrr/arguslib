@@ -20,7 +20,14 @@ class CameraData:
     This loader finds and reads data from timestamped MP4 files.
     """
 
-    def __init__(self, campaign, camstr, invert_axes=[False, False], timestamp_timezone="UTC"):
+    def __init__(
+        self, 
+        campaign, 
+        camstr, 
+        invert_axes=[False, False], 
+        manual_rotations=0, 
+        timestamp_timezone="UTC", 
+    ):
         from csat2.locator import FileLocator  # keep existing behaviour
 
         self.campaign = campaign
@@ -34,6 +41,7 @@ class CameraData:
         self._source = None
         self._source_key = None  # (type, path)
         self._invert_axes = invert_axes
+        self._manual_rotation_90degs = manual_rotations
         
         self.image = None  # placeholder for the current image
         self.current_image_time = None  # placeholder for the current image timestamp
@@ -78,6 +86,10 @@ class CameraData:
             data = data[::-1, :]
         if self._invert_axes[1]:
             data = data[:, ::-1]
+            
+        if self._manual_rotation_90degs != 0:
+            import numpy as np
+            data = np.rot90(data, k=self._manual_rotation_90degs)
             
         self.image = data
         self.current_image_time = timestamp

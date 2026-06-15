@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import transforms
 from datetime import timezone  # added
+import pandas as pd
+import os
 
 
 class TimestampedFigure(Figure):
@@ -135,7 +137,7 @@ def plot_beam(
     return ax
 
 
-def get_pixel_transform(camera, ax, lr_flip=True):
+def get_pixel_transform(camera, ax, lr_flip=True, rotate=True):
     from matplotlib.transforms import Affine2D
     import numpy as np
     from arguslib.instruments.instruments import rotation_matrix_i_to_g
@@ -173,7 +175,7 @@ def get_pixel_transform(camera, ax, lr_flip=True):
         Affine2D()
         .translate(-cx, -cy)
         .scale(scale_factor, scale_factor)
-        .rotate_deg(rotation_angle)
+        .rotate_deg(rotation_angle if rotate else 0)
         .scale(1, 1 / axes_aspect)
         .translate(0.5, 0.5)
     )
