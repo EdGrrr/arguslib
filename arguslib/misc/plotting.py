@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import transforms
 from datetime import timezone  # added
+import pandas as pd
+import os
 
 
 class TimestampedFigure(Figure):
@@ -135,7 +137,7 @@ def plot_beam(
     return ax
 
 
-def get_pixel_transform(camera, ax, lr_flip=True):
+def get_pixel_transform(camera, ax, lr_flip=True, rotate=True):
     from matplotlib.transforms import Affine2D
     import numpy as np
     from arguslib.instruments.instruments import rotation_matrix_i_to_g
@@ -173,7 +175,7 @@ def get_pixel_transform(camera, ax, lr_flip=True):
         Affine2D()
         .translate(-cx, -cy)
         .scale(scale_factor, scale_factor)
-        .rotate_deg(rotation_angle)
+        .rotate_deg(rotation_angle if rotate else 0)
         .scale(1, 1 / axes_aspect)
         .translate(0.5, 0.5)
     )
@@ -402,3 +404,121 @@ def show_the_sun(ax, camera, **kwargs):
         **kwargs,
     )
     return ax
+
+def show_stars(ax, camera, **kwargs):
+    """Plot a small set of bright stars visible from the camera.
+
+    This mirrors show_the_sun: it computes the apparent altitude/azimuth
+    of several bright stars at the figure timestamp and camera location,
+    converts those directions to approximate positions at a large
+    distance, and annotates them on the camera axes.
+
+    The implementation uses astropy for the RA/Dec → AltAz transform,
+    but keeps a tiny built‑in catalogue so it has no external
+    data/Internet dependency.
+    """
+
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+    import astropy.units as u
+
+    dt = ax.get_figure().timestamp
+    star_positions = get_visible_star_positions(camera, dt)
+    if len(star_positions) == 0:
+        return ax
+
+    # Default plotting style; can be overridden by kwargs
+    plot_kwargs = {
+        "marker": "o",
+        "linestyle": "None",
+        "markeredgecolor": "white",
+        "markeredgewidth": .1,
+        "color": "none",
+        "markersize": 1,
+        "zorder": 20,
+    }
+    plot_kwargs.update(kwargs)
+
+    camera.annotate_positions(
+        star_positions,
+        dt,
+        ax=ax,
+        **plot_kwargs,
+    )
+
+    # Optionally label stars if requested
+    if plot_kwargs.pop("with_labels", False):
+        for name, pos in zip(visible_names, star_positions):
+            camera.annotate_positions(
+                [pos],
+                dt,
+                ax=ax,
+                plotting_method="text",
+                s=name,
+                color=plot_kwargs.get("color", "white"),
+                fontsize=6,
+            )
+
+    return ax
+
+def get_visible_star_positions(camera, dt):
+
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+    import astropy.units as u
+
+    lat = camera.position.lat
+    lon = camera.position.lon
+    alt_km = getattr(camera.position, "alt", 0.0)
+
+    # Camera location for astropy (height expects metres)
+    location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=alt_km * 1000 * u.m)
+
+    obstime = Time(dt)
+    altaz_frame = AltAz(obstime=obstime, location=location)
+
+    # Minimal built‑in list of bright stars (RA/Dec J2000, degrees).
+    # These are roughly the brightest (mag ≲ 1.0).
+    df_stars = pd.read_csv(
+        os.path.join(os.path.dirname(__file__), "../misc/hipparcos_15apparentMagnitude.csv"),
+        usecols=["Name", "ra (deg)", "dec (deg)"],
+    )
+    ra_deg = df_stars['ra (deg)'].values
+    dec_deg = df_stars['dec (deg)'].values
+    names = df_stars['Name'].values.tolist()
+    
+    # stars = zip(ras, decs)
+
+    # names = list(bright_stars.keys())
+    # ra_deg, dec_deg = zip(*bright_stars.values())
+
+    skycoord = SkyCoord(ra=list(ra_deg) * u.deg, dec=list(dec_deg) * u.deg, frame="icrs")
+    altaz = skycoord.transform_to(altaz_frame)
+
+    # Only keep stars that are above the horizon
+    mask = altaz.alt.deg > 0.0
+    if not np.any(mask):
+        return []
+
+    visible_names = [n for n, m in zip(names, mask) if m]
+    visible_alt = altaz.alt.deg[mask]
+    visible_az = altaz.az.deg[mask]
+
+    
+    # Place stars on a large sphere (e.g. 1000 km) so that ead_to_lla
+    # gives a distant position along the correct line of sight.
+    star_distance_km = 100.0
+    star_positions = [
+        camera.position.ead_to_lla(el, az, star_distance_km)
+        for el, az in zip(visible_alt, visible_az)
+    ]
+    return star_positions
+
+
+def get_star_pixel_coords(cam, dt):
+    star_positions = get_visible_star_positions(cam, dt)
+    pixel_coords = cam.target_pix(star_positions)
+    in_image = (pixel_coords[:, 0] >= 0) & (pixel_coords[:, 0] < cam.image_size_px[0]) & \
+               (pixel_coords[:, 1] >= 0) & (pixel_coords[:, 1] < cam.image_size_px[1])
+    pixel_coords = pixel_coords[in_image]
+    return pixel_coords

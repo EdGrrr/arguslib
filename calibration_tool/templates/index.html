@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Calibration Tool</title>
+    <style>
+        body { font-family: sans-serif; background: #222; color: #eee; margin: 0; padding: 20px; }
+        .controls { margin-bottom: 20px; background: #333; padding: 10px; border-radius: 8px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        button { padding: 8px 16px; cursor: pointer; background: #444; color: white; border: 1px solid #666; border-radius: 4px; }
+        button:hover { background: #555; }
+        input, select { background: #222; color: #eee; border: 1px solid #666; padding: 6px 8px; border-radius: 4px; }
+        label { font-size: 0.9em; color: #ccc; }
+        #canvas-container { position: relative; overflow: auto; border: 2px solid #555; max-height: 80vh; }
+        canvas { cursor: crosshair; }
+        .info { font-size: 0.9em; color: #aaa; }
+        #status { color: #4caf50; font-weight: bold; margin-left: auto; }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <label>Camera:
+        <input id="camera-input" value="{{ start_camera }}" />
+    </label>
+
+    <label>Date/Time:
+        <input type="datetime-local" id="time-input" />
+    </label>
+    <button onclick="applyTimeInput()">Apply Time</button>
+
+    <button onclick="changeTime(-1)">Prev Hour</button>
+    <span id="time-display">Loading...</span>
+    <button onclick="changeTime(1)">Next Hour</button>
+
+    <button onclick="clearAllDetections()">Clear All Detections</button>
+
+    <span class="info">Click on the actual star center. Green = Expected, Red = Your Click.</span>
+    <span id="status"></span>
+</div>
+
+<div id="canvas-container">
+    <canvas id="calibCanvas"></canvas>
+</div>
+
+<script>
+    let cameraId = "{{ start_camera }}";
+    let currentTime = new Date("{{ start_time }}");
+    let starData = [];
+    let calibrationData = {};
+
+    let currentImageObj = new Image();
+
+    const canvas = document.getElementById('calibCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const timeDisplay = document.getElementById('time-display');
+    const cameraInput = document.getElementById('camera-input');
+    const timeInput = document.getElementById('time-input');
+
+    cameraInput.addEventListener('change', () => {
+        cameraId = cameraInput.value.trim();
+        updateDisplay();
+    });
+
+    function setTimeInputFromCurrent() {
+        // Format for datetime-local (YYYY-MM-DDTHH:mm)
+        const tzOffsetMs = currentTime.getTimezoneOffset() * 60000;
+        const localISO = new Date(currentTime - tzOffsetMs).toISOString().slice(0,16);
+        timeInput.value = localISO;
+    }
+
+    function applyTimeInput() {
+        if (timeInput.value) {
+            // Interpret as local time; convert to Date
+            const chosen = new Date(timeInput.value);
+            currentTime = chosen;
+            updateDisplay();
+        }
+    }
+
+    updateDisplay();
+
+    function changeTime(hours) {
+        currentTime.setHours(currentTime.getHours() + hours);
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        timeDisplay.innerText = currentTime.toISOString().replace('T', ' ').substring(0, 16);
+        setTimeInputFromCurrent();
+        statusEl.innerText = "Loading...";
+
+        currentImageObj.onload = () => {
+            canvas.width = currentImageObj.width;
+            canvas.height = currentImageObj.height;
+            redrawAll();
+            loadStars();
+        };
+        currentImageObj.src = `/api/image?camera=${encodeURIComponent(cameraId)}&time=${currentTime.toISOString()}&_=${Date.now()}`;
+    }
+
+    function loadStars() {
+        fetch(`/api/stars?camera=${encodeURIComponent(cameraId)}&time=${currentTime.toISOString()}`)
+            .then(res => res.json())
+            .then(data => {
+                starData = data.stars || [];
+                calibrationData = data.calibrations || {};
+                redrawAll();
+                const count = Object.keys(calibrationData).length;
+                statusEl.innerText = `Ready. ${count} stars calibrated.`;
+            })
+            .catch(err => {
+                statusEl.innerText = `Error: ${err}`;
+            });
+    }
+
+    function clearAllDetections() {
+        if (!cameraId) return;
+        statusEl.innerText = "Clearing all detections...";
+        fetch('/api/clear_all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ camera: cameraId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            calibrationData = {};
+            redrawAll();
+            statusEl.innerText = data.status || "All detections cleared.";
+        })
+        .catch(() => {
+            statusEl.innerText = "Failed to clear detections.";
+        });
+    }
+
+    function redrawAll() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (currentImageObj.complete) {
+            ctx.drawImage(currentImageObj, 0, 0);
+        }
+
+        ctx.lineWidth = 2;
+
+        starData.forEach((star, index) => {
+            const isCalibrated = calibrationData.hasOwnProperty(index);
+            ctx.beginPath();
+            ctx.arc(star[0], star[1], 10, 0, 2 * Math.PI);
+            if (isCalibrated) {
+                ctx.strokeStyle = '#FFFF00';
+                const actual = calibrationData[index];
+                drawConnection(star[0], star[1], actual[0], actual[1]);
+            } else {
+                ctx.strokeStyle = '#00FF00';
+            }
+            ctx.stroke();
+        });
+    }
+
+    function drawConnection(expectedX, expectedY, actualX, actualY) {
+        ctx.strokeStyle = '#FF0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(actualX - 8, actualY - 8);
+        ctx.lineTo(actualX + 8, actualY + 8);
+        ctx.moveTo(actualX + 8, actualY - 8);
+        ctx.lineTo(actualX - 8, actualY + 8);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(actualX, actualY);
+        ctx.lineTo(expectedX, expectedY);
+        ctx.strokeStyle = 'yellow';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    canvas.addEventListener('mousedown', function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        handleInteraction(x, y);
+    });
+
+    function handleInteraction(clickX, clickY) {
+        let minDist = Infinity;
+        let closestStarIndex = -1;
+        const THRESHOLD = 250;
+
+        starData.forEach((star, index) => {
+            const dx = star[0] - clickX;
+            const dy = star[1] - clickY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestStarIndex = index;
+            }
+        });
+
+        if (closestStarIndex !== -1 && minDist < THRESHOLD) {
+            const expected = starData[closestStarIndex];
+            fetch('/api/submit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    camera: cameraId,
+                    timestamp: currentTime.toISOString(),
+                    star_index: closestStarIndex,
+                    expected: expected,
+                    actual: [clickX, clickY]
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'added') {
+                    calibrationData[closestStarIndex] = [clickX, clickY];
+                    statusEl.innerText = "Point Saved.";
+                } else if (data.status === 'removed') {
+                    delete calibrationData[closestStarIndex];
+                    statusEl.innerText = "Point Removed (Undo).";
+                }
+                redrawAll();
+            });
+        }
+    }
+</script>
+
+</body>
+</html>

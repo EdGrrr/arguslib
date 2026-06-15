@@ -85,6 +85,7 @@ class AircraftInterface(PlottableInstrument):
         date_or_dt: Union[datetime.date, datetime.datetime],
         adsb_data_dir: Union[str, Path] = None,
         force_reload: bool = False,
+        load_era5_winds: bool = True, # true for backward compatibility, but would like to make false. 
     ):
         """
         Loads ADS-B flight data for the specified date from the given directory
@@ -137,10 +138,10 @@ class AircraftInterface(PlottableInstrument):
         current_loaded_file = self.fleet.loaded_file
         self.fleet.load_output(str(adsb_file_path_base), force_reload=force_reload)
 
-        if force_reload or (
+        if load_era5_winds and (force_reload or (
             not self.fleet.has_notnull_data("uwind")
             and self.fleet.loaded_file != current_loaded_file
-        ):
+        )):
             print("Attempting to assign ERA5 wind data to fleet...")
             try:
                 self.fleet.assign_era5_winds()  # This method has its own error handling and print statements
@@ -172,7 +173,6 @@ class AircraftInterface(PlottableInstrument):
         dt,
         ax,
         adjust_km=(0, 0),
-        adjust_mps=(0, 0),
         color_icao=True,
         label_acft=False,
         icao_include: list = None,
@@ -182,13 +182,16 @@ class AircraftInterface(PlottableInstrument):
         advection_winds="era5",
         **kwargs,
     ):
-        kwargs = {"wind_filter": -1, "tlen": 3600, "adjust_mps": adjust_mps} | kwargs
+        
+        kwargs = {"wind_filter": -1, "tlen": 3600} | kwargs
 
-        plot_trails_kwargs = (
+        plot_trails_kwargs |= (
             {"plotting_method": "intersect_plot"}
             if self.camera.__class__.__name__ == "RadarInterface"
             else {}
         )
+        
+        plot_trails_kwargs = {"linewidth": 1, "alpha": 0.7} | plot_trails_kwargs
 
         if not self.fleet.loaded_file:
             print(
@@ -250,8 +253,9 @@ class AircraftInterface(PlottableInstrument):
                 timestamp,
                 ax,
                 **(trail_plot_args|
-                {'color': "r",
+                {
                 'marker': "o",
+                'markeredgewidth': 0,
                 'markersize': 2} | plot_plane_kwargs),
             )
 
@@ -295,7 +299,7 @@ class AircraftInterface(PlottableInstrument):
                     positions = adjust_trail_positions(positions, adjust_km)
 
                     # Define kwargs specifically for the intersection markers
-                    intersect_kwargs = {"marker": "X", "s": 25}
+                    intersect_kwargs = {"marker": "x", "s": 25}
                     # acft_kwargs.pop('label', None)
                     intersect_success = self.camera.annotate_intersections(
                         positions,
@@ -316,8 +320,9 @@ class AircraftInterface(PlottableInstrument):
                 timestamp,
                 ax,
                 **(trail_plot_args | 
-                {'color': "r",
+                {
                 'marker': "o",
+                'markeredgewidth': 0,   
                 'markersize': 2} | plot_plane_kwargs
             ))
 
@@ -339,6 +344,8 @@ class AircraftInterface(PlottableInstrument):
             axes = ax.flat
             
         for ax_to_clean in axes:
+            if ax_to_clean is None:
+                continue
             boundary_path = ax_to_clean.patch.get_path()
             transform = ax_to_clean.patch.get_transform()
             transformed_boundary = boundary_path.transformed(transform)
@@ -376,7 +383,8 @@ class AircraftInterface(PlottableInstrument):
         for acft in trail_latlons.keys():
             if (
                 np.isnan(trail_latlons[acft])
-                | (trail_alts_geom[acft]["alt_geom"] < 26000)
+                | (trail_alts_geom[acft]["alt_geom"] < 10000) #below 10000 ft. 
+                # height limit was 26000 ft at one point. no idea why.
             ).all():
                 continue
 

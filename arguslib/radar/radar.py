@@ -292,10 +292,7 @@ class Radar(Instrument):
                     plot_ys[i],
                     labels[i],
                     fontsize=8,
-                    color="white",
-                    bbox=dict(
-                        facecolor=kwargs.get("color", "magenta"), alpha=0.6, pad=1
-                    ),
+                    color=kwargs.get("color", "magenta"),
                     ha="left",
                     va="bottom",
                 )

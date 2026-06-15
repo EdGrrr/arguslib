@@ -162,7 +162,7 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
             fig = plt.figure(
                 FigureClass=TimestampedFigure,
                 timestamp=current_dt,
-                figsize=(10, 4.9),
+                figsize=(8, 3.5),
                 dpi=300,
                 constrained_layout=True,
             )
@@ -248,7 +248,7 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
         return ax_cam, ax_radar
 
     def annotate_positions(
-        self, positions, dt, ax, cam_kwargs={}, radar_kwargs={}, **kwargs
+        self, positions, dt, ax, cam_kwargs={}, radar_kwargs={}, annotate_radar_scan=False, **kwargs
     ):
         """Annotates geographical positions on both the camera and radar plots.
 
@@ -271,9 +271,11 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
         ax_cam = self.camera.annotate_positions(
             positions, dt, ax=ax_cam, **(cam_kwargs | kwargs)
         )
-        ax_radar = self.radar.annotate_positions(
-            positions, dt, ax=ax_radar, **(radar_kwargs | kwargs)
-        )
+        
+        if annotate_radar_scan:
+            ax_radar = self.radar.annotate_positions(
+                positions, dt, ax=ax_radar, **(radar_kwargs | kwargs)
+            )
 
         return ax_cam, ax_radar
 

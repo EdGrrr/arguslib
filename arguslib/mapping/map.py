@@ -67,7 +67,7 @@ class MapInstrument(PlottableInstrument):
         return cls(projection=projection, extent=extent, **config)
 
     @override
-    def show(self, dt, ax=None, **kwargs):
+    def show(self, dt, ax=None, replace_ax=None, **kwargs):
         """
         Renders the map, creating a new figure if no axes are provided.
 
@@ -76,21 +76,31 @@ class MapInstrument(PlottableInstrument):
                 (can be ignored for a static map but required by the interface).
             ax (matplotlib.axes.Axes, optional): The axis to plot on. If None,
                 a new figure and axis with the specified projection are created.
+            replace_ax (matplotlib.axes.Axes, optional): If provided, the existing axis to replace.
             **kwargs: Additional keyword arguments for map features (e.g., `resolution`).
 
         Returns:
             matplotlib.axes.Axes: The axis on which the map was drawn.
         """
-        if ax is None:
+        if ax is None and replace_ax is None:
             fig, ax = plt.subplots(
                 subplot_kw={"projection": self.projection},
                 FigureClass=TimestampedFigure,
                 timestamp=dt,
             )
+        elif replace_ax is not None:
+            # replace the provided axis with a new one of the correct projection
+            fig = replace_ax.figure
+            ax_spec = replace_ax.get_subplotspec()
+            fig.delaxes(replace_ax)
+            ax = fig.add_subplot(ax_spec, projection=self.projection)
+            
 
         # Add common map features first
         ax.coastlines(resolution=kwargs.get("resolution", "10m"))
-        ax.gridlines(draw_labels=True, linestyle="--", alpha=0.5)
+        gl = ax.gridlines(draw_labels=True)
+        gl.top_labels = False
+        gl.right_labels = False
         if self.show_land:
             ax.add_feature(cfeature.LAND, facecolor="lightgray", alpha=0.5)
         if self.show_ocean:

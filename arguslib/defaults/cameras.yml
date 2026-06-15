@@ -30,33 +30,39 @@ COBALT:
         timestamp_timezone: "Europe/London"
     3-7:
         calibration_file: cobalt_3-7_calibration.yml
-        position: [-1.439252, 51.146668, 0.1]
+        position: [-1.439252, 51.146668, 0.08]
         rotation: 15
         timestamp_timezone: "Europe/London"
     3-8:
         calibration_file: null
-        position: [-1.438511, 51.149064, 0.1]
+        position: [-1.438511, 51.149064, 0.08]
         rotation: 160
         timestamp_timezone: "Europe/London"
     5-1:
-        calibration_file: null
-        position: [-1.363346, 50.952369, 0.1]
-        rotation: 70
+        calibration_file: cobalt_5-1_calibration.yml
+        position: [-1.363346, 50.952369, 0.011]
+        # rotation: 58
+        # rotation: [88.48337035, 319.21399213,  98.79324488] # updated after calibration
+        rotation: [ 88.51804301, 320.32595128,  97.69376062]
         timestamp_timezone: "Europe/London"
     5-2:
         calibration_file: null
-        position: [-1.141453, 51.147445, 0.1]
+        position: [-1.141453, 51.147445, 0.085]
         rotation: -80
         timestamp_timezone: "Europe/London"
     5-3:
-        calibration_file: null
-        position: [-1.443658, 51.320375, 0.1]
-        rotation: 45
+        calibration_file: cobalt_5-3_calibration.yml
+        position: [-1.443658, 51.320375, 0.23]
+        # rotation: 46
+        # rotation: [87.6269, 261.5045, 141.4537]
+        # rotation: [  87.9174045,   259.48492791, -216.4491871 ]
+        rotation: [ 87.92415504, 252.54610839, 150.45370869]
         timestamp_timezone: "Europe/London"
     5-4:
-        calibration_file: null
-        position: [-1.78568, 51.09967, 0.1]
-        rotation: -115
+        calibration_file: cobalt_5-4_calibration.yml
+        position: [-1.78568, 51.09967, 0.08]
+        # rotation: -122
+        rotation: [87.7314, 171.1613, 67.5837] # updated after calibration
         timestamp_timezone: "Europe/London"
     2-11:
         camera_type: perspective
