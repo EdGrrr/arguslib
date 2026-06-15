@@ -83,6 +83,9 @@ class Camera(Instrument):
             self._data_loader_class = CameraData
         else:
             self._data_loader_class = data_loader_class
+            
+        self._calibration_images = kwargs.get("calibration_images", False)
+        
         self._invert_axes = invert_axes
         self._manual_rotation_90degs = manual_rotation_90degs
         self.timestamp_timezone = timestamp_timezone
@@ -256,7 +259,7 @@ class Camera(Instrument):
         manual_rotations = self._manual_rotation_90degs
         
         if issubclass(LoaderClass, CameraData):
-            kwargs = {"timestamp_timezone": getattr(self, "timestamp_timezone", "UTC")}
+            kwargs = {"timestamp_timezone": getattr(self, "timestamp_timezone", "UTC"), "calibration_images": self._calibration_images}
         else:
             kwargs = {}
 

@@ -9,7 +9,7 @@ from .video import get_video_time_bounds
 # The FileLocator format for the default MP4 video files
 video_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/videos/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}_{hour:0>2}{min:0>2}{second:0>2}_A.mp4"
 
-cal_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}T{hour:0>2}{min:0>2}{second:0>2}_CAL{im_index}.mp4"
+cal_filename_format = "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}T{hour:0>2}{min:0>2}{second:0>2}_CAL{im_index}.jpg"
 
 os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "0"  # suppress opencv warnings
 
@@ -27,6 +27,7 @@ class CameraData:
         invert_axes=[False, False], 
         manual_rotations=0, 
         timestamp_timezone="UTC", 
+        calibration_images=False,
     ):
         from csat2.locator import FileLocator  # keep existing behaviour
 
@@ -42,7 +43,7 @@ class CameraData:
         self._source_key = None  # (type, path)
         self._invert_axes = invert_axes
         self._manual_rotation_90degs = manual_rotations
-        
+        self._calibration_images = calibration_images
         self.image = None  # placeholder for the current image
         self.current_image_time = None  # placeholder for the current image timestamp
 
@@ -65,6 +66,8 @@ class CameraData:
         """
         Gets image data from the appropriate MP4 file at the nearest possible timestamp.
         """
+        if self._calibration_images:
+            return self.get_calibration_data_time(dt, return_timestamp=return_timestamp)
         try:
             source = self._select_source_for_dt(dt)
             data, timestamp = source.get_data_time(dt, return_timestamp=True)
@@ -177,6 +180,52 @@ class CameraData:
                 else:
                     # this shouldn't happen?
                     raise RuntimeError("Logic error in get_video_file")
+    
+    def get_calibration_data_time(self, dt: dtmod.datetime, return_timestamp: bool = False, im_index=1):
+        """Gets calibration image data with the same hour value as dt."""
+        jpg_path = self.get_calibration_file(dt, im_index=im_index)
+        if jpg_path is None:
+            raise FileNotFoundError(
+                f"No calibration image file found for {self.camstr} at {dt} (im_index={im_index})"
+            )
+        
+        # load the jpg file.
+        # load timestamp from filename
+        # "/disk1/Data/ARGUS/{campaign}/{camstr}/cal/{year}-{mon:0>2}-{day:0>2}/argus-{camstr}_{year}{mon:0>2}{day:0>2}T{hour:0>2}{min:0>2}{second:0>2}_CAL{im_index}.mp4"
+        import cv2
+        data = cv2.imread(jpg_path)
+        timestamp_str = os.path.basename(jpg_path).split("_")[1]
+        timestamp = dtmod.datetime.strptime(timestamp_str, f"%Y%m%dT%H%M%S")
+        if self._invert_axes[0]:
+            data = data[::-1, :]
+        if self._invert_axes[1]:
+            data = data[:, ::-1]
+        self.image = data
+        self.current_image_time = timestamp
+        if not return_timestamp:
+            return data
+        return data, timestamp
+    
+    def get_calibration_file(self, dt, im_index=1):
+        """Finds the local calibration MP4 file path for a given datetime and image index."""
+        files = self.locator.search(
+            "ARGUS",
+            "cal",
+            campaign=self.campaign,
+            camstr=self.camstr,
+            year=dt.year,
+            mon=dt.month,
+            day=dt.day,
+            hour=dt.hour,
+            min="**",
+            second="**",
+            im_index=im_index,
+        )
+
+        if len(files) == 0:
+            return None
+        else:
+            return files[0]
     
 
 def is_mp4_file_corrupt(filepath):
