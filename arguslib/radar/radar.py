@@ -1,8 +1,10 @@
 from arguslib.instruments.instruments import Instrument, Position
 from arguslib.misc.plotting import TimestampedFigure, plot_beam
 from arguslib.misc.interpolation import interpolate_to_intersection
+from arguslib.protocols import ProvidesRadarScanTime
 
 import numpy as np
+import datetime
 import pyart
 
 
@@ -10,7 +12,17 @@ from pathlib import Path
 from typing_extensions import override
 
 
-class Radar(Instrument):
+def _scan_time_bounds(pyart_radar):
+    start = datetime.datetime.fromisoformat(
+        pyart.util.datetime_from_radar(pyart_radar).isoformat()
+    )
+    start = (start + datetime.timedelta(microseconds=500_000)).replace(microsecond=0)
+    duration = pyart_radar.time["data"][-1] - pyart_radar.time["data"][0]
+    end = (start + datetime.timedelta(seconds=round(duration))).replace(microsecond=0)
+    return start, end
+
+
+class Radar(Instrument, ProvidesRadarScanTime):
     def __init__(self, beamwidth, *args, **kwargs):
         self.beamwidth = beamwidth
         super().__init__(*args, **kwargs)
@@ -82,6 +94,10 @@ class Radar(Instrument):
         from . import RadarData
 
         self.data_loader = RadarData(self.attrs["campaign"], "rhi")
+
+    def get_scan_time_bounds(self, dt):
+        pyart_radar = self.data_loader.get_pyart_radar(dt)
+        return _scan_time_bounds(pyart_radar)
 
     @override
     def _show(self, dt, var, ax=None, kwargs_beam={}, **kwargs):
@@ -184,7 +200,7 @@ class Radar(Instrument):
     def annotate_intersections(self, positions, ages, dt, ax, **kwargs):
         """Calculates and annotates where a given path intersects the radar scan."""
 
-        (dt_start, dt_end) = kwargs.pop("time_bounds", (None, None))
+        dt_start, dt_end = kwargs.pop("time_bounds", (None, None))
 
         if dt is None:
             raise ValueError("dt must be provided for radar positions")

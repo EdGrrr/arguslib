@@ -48,12 +48,14 @@ class AircraftInterface(PlottableInstrument):
         fleet (Fleet): The object managing the aircraft data.
     """
 
-    def __init__(self, camera: PlottableInstrument, fleet: Fleet = None):
+    def __init__(
+        self, camera: PlottableInstrument, fleet: Fleet = None, **fleet_kwargs
+    ):
         self.camera = camera
         self.fleet = fleet  # TODO: loading this data should be easier/automatic. Maybe an AircraftInterface base class to house functionality for this and the radar.
         if self.fleet is None:
-            self.fleet = Fleet(
-                variables=[
+            default_fleet_kwargs = {
+                "variables": [
                     "lon",
                     "lat",
                     "alt_baro",
@@ -67,7 +69,8 @@ class AircraftInterface(PlottableInstrument):
                     "wd",
                     "oat",
                 ]
-            )
+            }
+            self.fleet = Fleet(**(default_fleet_kwargs | fleet_kwargs))
 
         attrs = {"camera": self.camera.attrs}
         super().__init__(**attrs)
@@ -85,6 +88,7 @@ class AircraftInterface(PlottableInstrument):
         date_or_dt: Union[datetime.date, datetime.datetime],
         adsb_data_dir: Union[str, Path] = None,
         force_reload: bool = False,
+        **fleet_load_kwargs,
     ):
         """
         Loads ADS-B flight data for the specified date from the given directory
@@ -135,7 +139,9 @@ class AircraftInterface(PlottableInstrument):
             )
 
         current_loaded_file = self.fleet.loaded_file
-        self.fleet.load_output(str(adsb_file_path_base), force_reload=force_reload)
+        self.fleet.load_output(
+            str(adsb_file_path_base), force_reload=force_reload, **fleet_load_kwargs
+        )
 
         if force_reload or (
             not self.fleet.has_notnull_data("uwind")
@@ -184,9 +190,9 @@ class AircraftInterface(PlottableInstrument):
     ):
         kwargs = {"tlen": 3600, "adjust_mps": adjust_mps} | kwargs
 
-        plot_trails_kwargs = (
+        plot_trails_kwargs |= (
             {"plotting_method": "intersect_plot"}
-            if self.camera.__class__.__name__ == "RadarInterface"
+            if self.camera.__class__.__name__.startswith("Radar")
             else {}
         )
 
@@ -208,8 +214,9 @@ class AircraftInterface(PlottableInstrument):
             # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
             timestamp = self.camera.data_loader.current_image_time
         else:
-            timestamp = get_timestamp_from_ax(ax)
-
+            # timestamp = get_timestamp_from_ax(ax)
+            timestamp = dt
+        # print(f"{timestamp} vs. {dt}")
         loaded_date = datetime.datetime.strptime(
             self.fleet.loaded_file.split("/")[-1], "%Y%m%d_ADS-B"
         )
@@ -238,7 +245,7 @@ class AircraftInterface(PlottableInstrument):
                 "color": f"#{acft}" if color_icao else "red",
                 "label": f"{acft}" if label_acft else None,
             }
-            # 1. GENERIC CALL: Draw the basic trail line on whatever instrument we have.
+            # 1. GENERIC CALL: Draw the basic unadvected trail line on whatever instrument we have.
             # This is safe because 'plotting_method' and other special kwargs are removed.
             positions = adjust_trail_positions(positions, adjust_km)
             self.camera.annotate_positions(
@@ -249,16 +256,17 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                **(trail_plot_args|
-                {'color': "r",
-                'marker': "o",
-                'markersize': 2} | plot_plane_kwargs),
+                **(
+                    trail_plot_args
+                    | {"color": "r", "marker": "o", "markersize": 2}
+                    | plot_plane_kwargs
+                ),
             )
 
         if plotting_method == "intersect_plot":
 
             # here we need to chunk up the radar, get trails at different times, and plot those.
-            intersect_chunk_size = 60  # s
+            intersect_chunk_size = 10  # s
 
             times_midpoints = np.arange(
                 self.start_time.timestamp() + intersect_chunk_size / 2,
@@ -271,15 +279,23 @@ class AircraftInterface(PlottableInstrument):
                 intersect_chunk_size / 2,
             )
             plotted_icaos = []
-            for t, (ti, tf) in tqdm(zip(
-                times_midpoints, zip(times_edges[:-2], times_edges[2:])
-            ), total=len(times_midpoints), desc="Processing radar intersections in time chunks..."):
+            for t, (ti, tf) in tqdm(
+                zip(times_midpoints, zip(times_edges[:-2], times_edges[2:])),
+                total=len(times_midpoints),
+                desc="Processing radar intersections in time chunks...",
+            ):
                 dict_positions = self.get_trail_positions(
                     datetime.datetime.fromtimestamp(t),
                     icao_include=icao_include,
                     **kwargs,
                 )
-                for acft, (positions, ages) in tqdm(dict_positions.items(), desc="Processing aircraft intersections", total=len(dict_positions), leave=False, disable=True):
+                for acft, (positions, ages) in tqdm(
+                    dict_positions.items(),
+                    desc="Processing aircraft intersections",
+                    total=len(dict_positions),
+                    leave=False,
+                    disable=True,
+                ):
                     # this long loop is slowing things down...
                     if acft in plotted_icaos:
                         continue
@@ -295,7 +311,7 @@ class AircraftInterface(PlottableInstrument):
                     positions = adjust_trail_positions(positions, adjust_km)
 
                     # Define kwargs specifically for the intersection markers
-                    intersect_kwargs = {"marker": "X", "s": 25}
+                    intersect_kwargs = {"marker": "x", "s": 25}
                     # acft_kwargs.pop('label', None)
                     intersect_success = self.camera.annotate_intersections(
                         positions,
@@ -315,18 +331,18 @@ class AircraftInterface(PlottableInstrument):
                 positions[-1:],
                 timestamp,
                 ax,
-                **(trail_plot_args | 
-                {'color': "r",
-                'marker': "o",
-                'markersize': 2} | plot_plane_kwargs
-            ))
+                **(
+                    trail_plot_args
+                    | {"color": "r", "marker": "o", "markersize": 2}
+                    | plot_plane_kwargs
+                ),
+            )
 
-        
         if ax is None:
             return  # nothing more to do for DirectCamera case.
         get_fig_from_ax_or_axs(ax).canvas.draw()
 
-        if isinstance(ax, tuple): # the complicated case of likely a radar interface.
+        if isinstance(ax, tuple):  # the complicated case of likely a radar interface.
             axes = []
             for a in ax:
                 if not hasattr(a, "flat"):
@@ -337,7 +353,7 @@ class AircraftInterface(PlottableInstrument):
             axes = [ax]
         else:
             axes = ax.flat
-            
+
         for ax_to_clean in axes:
             boundary_path = ax_to_clean.patch.get_path()
             transform = ax_to_clean.patch.get_transform()
@@ -370,30 +386,29 @@ class AircraftInterface(PlottableInstrument):
         # Here we want to filter the trails (if possible) for othly those that pass within 30km of Chilbolton
         # Using trackerlib
 
+        radar = getattr(
+            self.camera, "radar", self.camera
+        )  # RadarInterface -> .radar, Radar -> itself
         try:
-            # TODO: We almost certainly do want to fix this to the
-            # radar, but I am not clear how to address this here
-            cao = self.camera.radar.position # Assume we care about
-                                            # distance from the radar
-                                            # here.
-            dist_limit = 30 # radar range limit in km
+            cao = radar.position
+        except AttributeError:
+            cao = None
+
+        if cao is not None:
+            dist_limit = 30  # radar range limit in km
 
             trail_array = self.fleet.get_trails_arr(timestamp, kwargs["tlen"])
-            dists = haversine(trail_array[:, :, 0],
-                              trail_array[:, :, 1],
-                              cao.lon,
-                              cao.lat)
-            valid_inds = np.where((dists<dist_limit).sum(axis=1)>0)
+            dists = haversine(
+                trail_array[:, :, 0], trail_array[:, :, 1], cao.lon, cao.lat
+            )
+            valid_inds = np.where((dists < dist_limit).sum(axis=1) > 0)
             valid_ids = np.array(self.fleet.get_ids())[valid_inds].tolist()
 
             if icao_include is not None:
                 icao_include += valid_ids
             else:
                 icao_include = valid_ids
-        except AttributeError:
-            # If the fleet class doesn't have array output implmented
-            pass
-                
+
         if icao_include is not None:
             trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
 
@@ -461,11 +476,12 @@ class AircraftInterface(PlottableInstrument):
 
 
 class AutomaticADSBAircraftInterface(AircraftInterface):
-    def __init__(self, camera: PlottableInstrument):
-        super().__init__(camera)
+    def __init__(self, camera: PlottableInstrument, wind_filter=10, **kwargs):
+        self.wind_filter = wind_filter
+        super().__init__(camera, **kwargs)
 
     def show(self, dt, *args, **kwargs):
-        self.load_flight_data(dt)
+        self.load_flight_data(dt, wind_filter=self.wind_filter)
         return super().show(dt, *args, **kwargs)
 
 

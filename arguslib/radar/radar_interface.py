@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from arguslib.instruments.instruments import PlottableInstrument
 from arguslib.protocols import ProvidesRadarScanTime
+from arguslib.radar.radar import _scan_time_bounds
 
 from ..misc.plotting import TimestampedFigure
 
@@ -74,12 +75,7 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
         This method makes the class conform to the ProvidesRadarScanTime protocol.
         """
         pyart_radar = self.radar.data_loader.get_pyart_radar(dt)
-        start_time_utc = datetime.datetime.fromisoformat(
-            datetime_from_radar(pyart_radar).isoformat()
-        )
-        duration_seconds = pyart_radar.time["data"][-1] - pyart_radar.time["data"][0]
-        end_time_utc = start_time_utc + datetime.timedelta(seconds=duration_seconds)
-        return start_time_utc, end_time_utc
+        return _scan_time_bounds(pyart_radar)
 
     def show(
         self,
