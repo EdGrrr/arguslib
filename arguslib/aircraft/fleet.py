@@ -76,11 +76,13 @@ class Fleet:
         '''Load a set of position data. This creates a new flightlocs
         object, as this is simpler than updating in-place'''
 
-        if wind_filter is None:
+        if wind_filter is None and self.flightlocs is not None:
             if self.flightlocs.wind_filter_window:
                 wind_filter = self.flightlocs.wind_filter_window
             else:
                 wind_filter = -1
+        elif wind_filter is None:
+            wind_filter = -1
         
         # Work out the year/doy combination from the filename,
         # assuming the data is still using the cobalt filenames
