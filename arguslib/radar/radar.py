@@ -329,3 +329,8 @@ class Radar(Instrument, ProvidesRadarScanTime):
 
         ax.set_xlim(xlims)
         return intersect_positions
+
+    def annotate_trail(self, positions, dt, ax, **kwargs):
+        """No-op. A trail line has no meaning on an RHI — only the points where
+        the trail crosses the scan plane are physical. See annotate_intersections."""
+        return None

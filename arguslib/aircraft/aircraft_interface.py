@@ -11,7 +11,7 @@ from tqdm import tqdm
 from arguslib.misc.plotting import get_fig_from_ax_or_axs, get_timestamp_from_ax
 
 from ..misc.geo import ft_to_km, haversine
-from ..protocols import DirectRenderable, ProvidesRadarScanTime
+from ..protocols import DirectRenderable, ProvidesRadarScanTime, SupportsIntersections
 
 from ..instruments.instruments import PlottableInstrument
 from ..instruments import Position
@@ -182,19 +182,23 @@ class AircraftInterface(PlottableInstrument):
         color_icao=True,
         label_acft=False,
         icao_include: list = None,
-        plot_kwargs={},
-        plot_trails_kwargs={},
-        plot_plane_kwargs={},
-        advection_winds=None,  # use defaults
+        plot_kwargs=None,
+        plot_plane_kwargs=None,
+        advection_winds=None,
+        plot_baseline=True,
+        plot_intersections=None,
         **kwargs,
     ):
-        kwargs = {"tlen": 3600, "adjust_mps": adjust_mps} | kwargs
+        plot_kwargs = dict(plot_kwargs or {})
+        plot_plane_kwargs = dict(plot_plane_kwargs or {})
+        kwargs = {
+            "tlen": 3600,
+            "adjust_mps": adjust_mps,
+            "winds": advection_winds,
+        } | kwargs
 
-        plot_trails_kwargs |= (
-            {"plotting_method": "intersect_plot"}
-            if self.camera.__class__.__name__.startswith("Radar")
-            else {}
-        )
+        if plot_intersections is None:
+            plot_intersections = isinstance(self.camera, SupportsIntersections)
 
         if not self.fleet.loaded_file:
             print(
@@ -211,12 +215,10 @@ class AircraftInterface(PlottableInstrument):
             return
 
         if ax is None:
-            # ax is None - which is indicative of a DirectCamera - i.e. matplotlib avoidant
             timestamp = self.camera.data_loader.current_image_time
         else:
-            # timestamp = get_timestamp_from_ax(ax)
             timestamp = dt
-        # print(f"{timestamp} vs. {dt}")
+
         loaded_date = datetime.datetime.strptime(
             self.fleet.loaded_file.split("/")[-1], "%Y%m%d_ADS-B"
         )
@@ -225,121 +227,42 @@ class AircraftInterface(PlottableInstrument):
                 f"Plotting timestamp {timestamp} does not match loaded date {loaded_date}"
             )
 
-        kwargs["winds"] = advection_winds
-        # 2. SPECIALIZED CALL: If requested, and if we have a radar, plot intersections.
-        plotting_method = plot_kwargs.pop("plotting_method", None)
-        if plotting_method is None:
-            plotting_method = plot_trails_kwargs.pop("plotting_method", None)
-        if plotting_method == "intersect_plot":
-            label_acft_intersect = label_acft
-            label_acft = False
-
-        dict_positions = self.get_trail_positions(
-            timestamp, icao_include=icao_include, **kwargs
-        )
-        for acft, (positions, ages) in dict_positions.items():
-            # Make a copy of the kwargs to safely modify
-            trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
-
-            acft_kwargs = {
-                "color": f"#{acft}" if color_icao else "red",
-                "label": f"{acft}" if label_acft else None,
-            }
-            # 1. GENERIC CALL: Draw the basic unadvected trail line on whatever instrument we have.
-            # This is safe because 'plotting_method' and other special kwargs are removed.
-            positions = adjust_trail_positions(positions, adjust_km)
-            self.camera.annotate_positions(
-                positions, dt, ax, **(acft_kwargs | trail_plot_args)
+        if plot_baseline:
+            dict_positions = self.get_trail_positions(
+                timestamp, icao_include=icao_include, **kwargs
             )
-
-            self.camera.annotate_positions(
-                positions[-1:],
-                timestamp,
-                ax,
-                **(
-                    trail_plot_args
-                    | {"color": "r", "marker": "o", "markersize": 2}
-                    | plot_plane_kwargs
-                ),
-            )
-
-        if plotting_method == "intersect_plot":
-
-            # here we need to chunk up the radar, get trails at different times, and plot those.
-            intersect_chunk_size = 10  # s
-
-            times_midpoints = np.arange(
-                self.start_time.timestamp() + intersect_chunk_size / 2,
-                self.end_time.timestamp(),
-                intersect_chunk_size / 2,
-            )
-            times_edges = np.arange(
-                self.start_time.timestamp(),
-                self.end_time.timestamp() + intersect_chunk_size / 2,
-                intersect_chunk_size / 2,
-            )
-            plotted_icaos = []
-            for t, (ti, tf) in tqdm(
-                zip(times_midpoints, zip(times_edges[:-2], times_edges[2:])),
-                total=len(times_midpoints),
-                desc="Processing radar intersections in time chunks...",
-            ):
-                dict_positions = self.get_trail_positions(
-                    datetime.datetime.fromtimestamp(t),
-                    icao_include=icao_include,
-                    **kwargs,
-                )
-                for acft, (positions, ages) in tqdm(
-                    dict_positions.items(),
-                    desc="Processing aircraft intersections",
-                    total=len(dict_positions),
-                    leave=False,
-                    disable=True,
-                ):
-                    # this long loop is slowing things down...
-                    if acft in plotted_icaos:
-                        continue
-
-                    # Make a copy of the kwargs to safely modify
-                    trail_plot_args = (plot_kwargs | plot_trails_kwargs).copy()
-
-                    acft_kwargs = {
+            for acft, (positions, _ages) in dict_positions.items():
+                positions = adjust_trail_positions(positions, adjust_km)
+                self.camera.annotate_trail(
+                    positions,
+                    timestamp,
+                    ax,
+                    trail_kwargs=plot_kwargs
+                    | {
                         "color": f"#{acft}" if color_icao else "red",
-                        "label": f"{acft}" if label_acft_intersect else None,
-                    }
-
-                    positions = adjust_trail_positions(positions, adjust_km)
-
-                    # Define kwargs specifically for the intersection markers
-                    intersect_kwargs = {"marker": "x", "s": 25}
-                    # acft_kwargs.pop('label', None)
-                    intersect_success = self.camera.annotate_intersections(
-                        positions,
-                        ages,
-                        dt,
-                        ax,
-                        time_bounds=(
-                            datetime.datetime.fromtimestamp(ti),
-                            datetime.datetime.fromtimestamp(tf),
+                        "label": (
+                            acft if (label_acft and not plot_intersections) else None
                         ),
-                        **(acft_kwargs | trail_plot_args | intersect_kwargs),
-                    )
-                    if intersect_success:
-                        plotted_icaos.append(acft)
-
-            self.camera.annotate_positions(
-                positions[-1:],
-                timestamp,
-                ax,
-                **(
-                    trail_plot_args
+                    },
+                    plane_kwargs=plot_kwargs
                     | {"color": "r", "marker": "o", "markersize": 2}
-                    | plot_plane_kwargs
-                ),
+                    | plot_plane_kwargs,
+                )
+
+        if plot_intersections:
+            self._plot_intersections(
+                dt,
+                ax,
+                adjust_km=adjust_km,
+                icao_include=icao_include,
+                color_icao=color_icao,
+                label_acft=label_acft,
+                plot_kwargs=plot_kwargs,
+                **kwargs,
             )
 
         if ax is None:
-            return  # nothing more to do for DirectCamera case.
+            return
         get_fig_from_ax_or_axs(ax).canvas.draw()
 
         if isinstance(ax, tuple):  # the complicated case of likely a radar interface.
@@ -374,6 +297,58 @@ class AircraftInterface(PlottableInstrument):
                 # Check for intersection with the precise boundary path
                 if not transformed_boundary.intersects_bbox(artist_bbox):
                     artist.remove()
+
+    def _plot_intersections(
+        self,
+        dt,
+        ax,
+        adjust_km=(0, 0),
+        icao_include=None,
+        color_icao=True,
+        label_acft=False,
+        plot_kwargs=None,
+        chunk_size=10,
+        **kwargs,
+    ):
+        plot_kwargs = plot_kwargs or {}
+        start, end = self.start_time.timestamp(), self.end_time.timestamp()
+        step = chunk_size / 2
+        midpoints = np.arange(start + step, end, step)
+        edges = np.arange(start, end + step, step)
+
+        plotted_icaos = set()
+        for t, ti, tf in tqdm(
+            zip(midpoints, edges[:-2], edges[2:]),
+            total=len(midpoints),
+            desc="Processing radar intersections in time chunks...",
+        ):
+            dict_positions = self.get_trail_positions(
+                datetime.datetime.fromtimestamp(t), icao_include=icao_include, **kwargs
+            )
+            for acft, (positions, ages) in dict_positions.items():
+                if acft in plotted_icaos:
+                    continue
+                positions = adjust_trail_positions(positions, adjust_km)
+                if self.camera.annotate_intersections(
+                    positions,
+                    ages,
+                    dt,
+                    ax,
+                    time_bounds=(
+                        datetime.datetime.fromtimestamp(ti),
+                        datetime.datetime.fromtimestamp(tf),
+                    ),
+                    **(
+                        plot_kwargs
+                        | {
+                            "color": f"#{acft}" if color_icao else "red",
+                            "label": acft if label_acft else None,
+                            "marker": "x",
+                            "s": 25,
+                        }
+                    ),
+                ):
+                    plotted_icaos.add(acft)
 
     def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
         trail_latlons = self.get_trails(timestamp, **kwargs)
@@ -475,6 +450,9 @@ class AircraftInterface(PlottableInstrument):
             raise NotImplementedError(
                 "image property is only available when the underlying instrument is DirectRenderable."
             )
+
+    def annotate_trail(self, positions, dt, ax, **kwargs):
+        return self.camera.annotate_trail(positions, dt, ax, **kwargs)
 
 
 class AutomaticADSBAircraftInterface(AircraftInterface):

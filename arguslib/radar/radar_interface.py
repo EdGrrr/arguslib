@@ -281,3 +281,7 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
         kwargs["plotting_method"] = "scatter"
         self.camera.annotate_positions(intersect_positions, dt, ax=ax[0], **kwargs)
         return len(intersect_positions) > 0
+
+    def annotate_trail(self, positions, dt, ax, **kwargs):
+        """Trails go on the camera view; the cross-section gets intersections."""
+        return self.camera.annotate_trail(positions, dt, ax[0], **kwargs)

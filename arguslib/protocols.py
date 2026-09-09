@@ -36,3 +36,10 @@ class DirectRenderable(Protocol):
     def annotate_positions(self, positions, dt, ax=None, **kwargs) -> None: ...
 
     def to_image_array(self, time: bool = True) -> np.ndarray: ...
+
+
+@runtime_checkable
+class SupportsIntersections(Protocol):
+    """An instrument that can annotate where a path crosses a radar scan."""
+
+    def annotate_intersections(self, positions, ages, dt, ax, **kwargs): ...

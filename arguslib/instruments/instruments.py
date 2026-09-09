@@ -323,6 +323,15 @@ class PlottableInstrument:
             "Annotating positions not implemented for this instrument"
         )
 
+    def annotate_trail(self, positions, dt, ax, trail_kwargs=None, plane_kwargs=None):
+        """Draw one aircraft trail: the advected line, plus a marker at the aircraft.
+
+        Instruments where a trail line is meaningless override this.
+        """
+        self.annotate_positions(positions, dt, ax, **(trail_kwargs or {}))
+        if plane_kwargs is not None and len(positions):
+            self.annotate_positions(positions[-1:], dt, ax, **plane_kwargs)
+
 
 class Instrument(PlottableInstrument):
     """Represents a physical instrument with a specific location and orientation.
