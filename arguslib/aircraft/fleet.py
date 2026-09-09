@@ -52,7 +52,7 @@ class Fleet:
         self.loaded_file = None
 
     def add_data(self, dtime, acdata):
-        raise NotImplementedError('Not expected for a read-only class')
+        raise NotImplementedError("Not expected for a read-only class")
 
     def has_notnull_data(self, var):
         if var not in self.variables:
@@ -63,18 +63,17 @@ class Fleet:
         return False
 
     def update_internal(self):
-        raise NotImplementedError('Not expected for a read-only class')
+        raise NotImplementedError("Not expected for a read-only class")
 
     def __repr__(self):
-        return (
-            f"Fleet: {len(self.flightlocs.get_atypes())} aircraft")
+        return f"Fleet: {len(self.flightlocs.get_atypes())} aircraft"
 
     def write_output(self, filename):
-        raise NotImplementedError('Not expected for a read-only class')
+        raise NotImplementedError("Not expected for a read-only class")
 
     def load_output(self, filename, force_reload=False, wind_filter=None):
-        '''Load a set of position data. This creates a new flightlocs
-        object, as this is simpler than updating in-place'''
+        """Load a set of position data. This creates a new flightlocs
+        object, as this is simpler than updating in-place"""
 
         if wind_filter is None and self.flightlocs is not None:
             if self.flightlocs.wind_filter_window:
@@ -83,7 +82,7 @@ class Fleet:
                 wind_filter = -1
         elif wind_filter is None:
             wind_filter = -1
-        
+
         # Work out the year/doy combination from the filename,
         # assuming the data is still using the cobalt filenames
         basename = os.path.basename(filename)
@@ -91,34 +90,38 @@ class Fleet:
         year, doy = csat2.misc.time.date_to_doy(year, mon, day)
 
         # A negative wind_filter avoids activation
-        self.flightlocs = COBALTFlightLocs(year, doy,
-                                           wind_data=True,
-                                           wind_filter_window=wind_filter)
+        self.flightlocs = COBALTFlightLocs(
+            year, doy, wind_data=True, wind_filter_window=wind_filter
+        )
         self.flight_tracker = ContrailLocsFixed(
             self.flightlocs,
             winddata=None,
-            init_time = csat2.misc.time.ydh_to_datetime(year, doy, 12),
+            init_time=csat2.misc.time.ydh_to_datetime(year, doy, 12),
             intstep=datetime.timedelta(seconds=self.time_resolution),
-            trail_length_hours=2)
+            trail_length_hours=2,
+        )
         self.loaded_file = basename
-        if len(self.flightlocs)>0:
+        if len(self.flightlocs) > 0:
             self.aircraft = True
 
     def _trim_array(self, data, tlen):
-        end_index = int(tlen/self.time_resolution)+2
+        end_index = int(tlen / self.time_resolution) + 2
         return data[:, -end_index:]
-        
+
     def list_current(self):
         return self.flightlocs.get_flightids()
-    
+
     def get_current(self, dtime, vname=None):
-        '''Returns the value of a variable at a given datetime if there is valid position data'''
+        """Returns the value of a variable at a given datetime if there is valid position data"""
         ids = self.flightlocs.get_flightids()
-        lon = self.flightlocs.get_data_time(dtime, 'lon')['lon']
-        lat = self.flightlocs.get_data_time(dtime, 'lat')['lat']
-        valid_ind = np.isfinite(lon+lat)
+        lon = self.flightlocs.get_data_time(dtime, "lon")["lon"]
+        lat = self.flightlocs.get_data_time(dtime, "lat")["lat"]
+        valid_ind = np.isfinite(lon + lat)
         data = self.flightlocs.get_data_time(dtime, vname)
-        outdata = {ids[a] :{name: data[name][a] for name in data.keys()} for a in np.where(valid_ind)[0]}
+        outdata = {
+            ids[a]: {name: data[name][a] for name in data.keys()}
+            for a in np.where(valid_ind)[0]
+        }
         return outdata
 
     def interpolate_position(self, acft, dtime, alt_var="alt_geom"):
@@ -130,13 +133,13 @@ class Fleet:
         daysec_us = daysec + dtime.microsecond * 1e-6
 
         ac_index = self.flightlocs.get_flightids().index(acft)
-        
+
         # Collect the values either side of the aircraft
-        time = (daysec_us - self.flightlocs.data['times'])[
+        time = (daysec_us - self.flightlocs.data["times"])[
             index : index + 2
         ]  # Time since the aircraft passed this point
-        lon = self.flightlocs.data['lon'][ac_index, index : index + 2]
-        lat = self.flightlocs.data['lat'][ac_index, index : index + 2]
+        lon = self.flightlocs.data["lon"][ac_index, index : index + 2]
+        lat = self.flightlocs.data["lat"][ac_index, index : index + 2]
         alt = self.flightlocs.data[alt_var][ac_index, index : index + 2]
 
         pos = np.array([lon, lat, alt])
@@ -155,38 +158,35 @@ class Fleet:
     def get_tracks(self, *args, **kwargs):
         tracks = self.get_tracks_arr(*args, **kwargs)
         ids = self.flightlocs.get_flightids()
-        data = {ids[a]:tracks[a].T for a in range(len(ids))}
+        data = {ids[a]: tracks[a].T for a in range(len(ids))}
         return data
-    
+
     def get_tracks_arr(self, dtime, tlen=2 * 60 * 60, include_time=False):
         self.flight_tracker.increment_until(dtime)
         if include_time:
             tracks = self._trim_array(
-                self._add_time(
-                    self.flight_tracker.get_emission_pos()), tlen)
+                self._add_time(self.flight_tracker.get_emission_pos()), tlen
+            )
         else:
-            tracks = self._trim_array(
-                self.flight_tracker.get_emission_pos(), tlen)
+            tracks = self._trim_array(self.flight_tracker.get_emission_pos(), tlen)
         return tracks
-            
-    def get_trails(
-            self,
-            *args, **kwargs):
+
+    def get_trails(self, *args, **kwargs):
         trails = self.get_trails_arr(*args, **kwargs)
         ids = self.flightlocs.get_flightids()
-        data = {ids[a]:trails[a].T for a in range(len(ids))}
+        data = {ids[a]: trails[a].T for a in range(len(ids))}
         return data
 
     def get_trails_arr(
-            self,
-            dtime,
-            tlen=2 * 60 * 60,
-            spread_velocity=-1,
-            wind_filter=None,
-            include_time=False,
-            include_alt=False,
-            winds="era5",
-            adjust_mps=(0, 0),
+        self,
+        dtime,
+        tlen=2 * 60 * 60,
+        spread_velocity=-1,
+        wind_filter=None,
+        include_time=False,
+        include_alt=False,
+        winds="era5",
+        adjust_mps=(0, 0),
     ):
         self.flight_tracker.increment_until(dtime)
         if include_alt:
@@ -195,31 +195,38 @@ class Fleet:
             end_val = 2
         if include_time:
             trails = self._trim_array(
-                self._add_time(
-                    self.flight_tracker.get_trail_pos()[:, :, :end_val]), tlen)
+                self._add_time(self.flight_tracker.get_trail_pos()[:, :, :end_val]),
+                tlen,
+            )
         else:
             trails = self._trim_array(
-                self.flight_tracker.get_trail_pos()[:, :, :end_val], tlen)
-        return trails    
+                self.flight_tracker.get_trail_pos()[:, :, :end_val], tlen
+            )
+        return trails
 
     def _add_time(self, data):
-        outdata = np.concat([
-            data,
-            np.fromfunction(lambda x, y: self.time_resolution*y, data.shape[:-1])[:, ::-1][..., None]
-        ], axis=-1)
+        outdata = np.concat(
+            [
+                data,
+                np.fromfunction(lambda x, y: self.time_resolution * y, data.shape[:-1])[
+                    :, ::-1
+                ][..., None],
+            ],
+            axis=-1,
+        )
         return outdata
 
     def get_data(self, dtime, vname, *args, **kwargs):
         data = self.get_data_arr(dtime, vname, *args, **kwargs)
         ids = self.flightlocs.get_flightids()
-        outdata = {ids[a] :{vname: data[vname][a]} for a in range(len(ids))}
+        outdata = {ids[a]: {vname: data[vname][a]} for a in range(len(ids))}
         return outdata
 
     def get_data_arr(self, dtime, vname, tlen=2 * 60 * 60):
         self.flight_tracker.increment_until(dtime)
         data = self.flightlocs.get_data_time(dtime, vname, tlen)
         return data
-        
+
     def assign_era5_winds(self, _download_attempted_this_call=False):
         # Get the 3D ERA5 winds for this array
         pass
@@ -227,7 +234,6 @@ class Fleet:
     def load_3d_wind_field(dtime):
         pass
 
-    
 
 class AircraftPos:
     def __init__(self, time_resolution=15, variables=["lon", "lat", "alt", "geom"]):
