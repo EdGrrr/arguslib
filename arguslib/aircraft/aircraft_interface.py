@@ -382,7 +382,7 @@ class AircraftInterface(PlottableInstrument):
             valid_ids = np.array(self.fleet.get_ids())[valid_inds].tolist()
 
             if icao_include is not None:
-                icao_include += valid_ids
+                icao_include = [i for i in icao_include if i in set(valid_ids)]
             else:
                 icao_include = valid_ids
 
