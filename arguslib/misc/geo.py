@@ -155,3 +155,15 @@ def xr_add_cyclic_points(da):
     )
 
     return outp_da
+
+
+# misc/geo.py
+
+
+def advect_to(positions, ray_times, t_ref, wind):
+    u, v = wind
+    out = []
+    for p, t in zip(positions, ray_times):
+        dt_s = (t_ref - t).total_seconds()
+        out.append(p.xyz_to_lla(u * dt_s / 1000, v * dt_s / 1000, 0))
+    return out

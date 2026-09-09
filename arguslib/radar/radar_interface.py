@@ -13,6 +13,7 @@ from arguslib.protocols import ProvidesRadarScanTime
 from arguslib.radar.radar import _scan_time_bounds
 
 from ..misc.plotting import TimestampedFigure
+from ..misc.geo import advect_to
 
 from .radar_overlay_interface import RadarOverlayInterface
 
@@ -285,3 +286,15 @@ class RadarInterface(PlottableInstrument, ProvidesRadarScanTime):
     def annotate_trail(self, positions, dt, ax, **kwargs):
         """Trails go on the camera view; the cross-section gets intersections."""
         return self.camera.annotate_trail(positions, dt, ax[0], **kwargs)
+
+    def annotate_sampled_scan(
+        self, dt, ax_cam, wind, alt_km=8.0, t_ref=None, ray_step=4, **kwargs
+    ):
+        """Draw on the camera the strip of cloud this sweep sampled at one height."""
+        t_ref = t_ref or dt
+        positions, ray_times = self.radar.sampled_height(
+            dt, alt_km=alt_km, ray_step=ray_step
+        )
+        positions = advect_to(positions, ray_times, t_ref, wind)
+        self.camera.annotate_positions(positions, t_ref, ax_cam, **kwargs)
+        return positions

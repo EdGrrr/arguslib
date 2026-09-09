@@ -68,6 +68,31 @@ class Radar(Instrument, ProvidesRadarScanTime):
                 ]
             )
 
+    def sampled_height(self, dt, alt_km=8.0, ray_step=1, min_elev=20.0):
+        """Where the sweep crosses a given altitude, and when each crossing happened.
+
+        Returns (positions, ray_times), both length n_ray.
+        """
+        r = self.data_loader.get_pyart_radar(dt)
+        scan_start, _ = _scan_time_bounds(r)
+
+        offsets = np.asarray(r.time["data"], dtype=float)
+        offsets = offsets - offsets[0]
+        elevs = np.asarray(r.elevation["data"], dtype=float)
+        azimuth = float(r.azimuth["data"][0])
+
+        keep = elevs >= min_elev  # 1/sin(e) blows up near the horizon
+        elevs = elevs[keep][::ray_step]
+        offsets = offsets[keep][::ray_step]
+
+        dists = (alt_km - self.position.alt) / np.sin(np.deg2rad(elevs))
+
+        positions = [
+            self.position.ead_to_lla(e, azimuth, d) for e, d in zip(elevs, dists)
+        ]
+        ray_times = [scan_start + datetime.timedelta(seconds=float(o)) for o in offsets]
+        return positions, ray_times
+
     @classmethod
     def from_config(
         cls, campaign, **kwargs

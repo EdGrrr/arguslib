@@ -222,7 +222,11 @@ class Position:
         # Calculate the new altitude
         new_alt = self.alt + alt_diff_km
 
-        return Position(new_lon.item(), new_lat.item(), new_alt.item())
+        return Position(
+            float(np.asarray(new_lon)),
+            float(np.asarray(new_lat)),
+            float(np.asarray(new_alt)),
+        )
 
     def xyz_to_lla(self, target_x, target_y, target_z):
         """Converts local ENU coordinates back to a global Position object(s).
@@ -266,7 +270,11 @@ class Position:
         # Otherwise, create and return a single Position object
         else:
             # Using .item() safely extracts the scalar value if numpy returns a 0-dim array
-            return Position(new_lons.item(), new_lats.item(), new_alts.item())
+            return Position(
+                float(np.asarray(new_lons)),
+                float(np.asarray(new_lats)),
+                float(np.asarray(new_alts)),
+            )
 
     def __repr__(self):
         return f"{self.lon:.3f} {self.lat:.3f} {self.alt:.3f}"
