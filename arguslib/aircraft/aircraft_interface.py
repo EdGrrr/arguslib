@@ -15,7 +15,7 @@ from ..protocols import DirectRenderable, ProvidesRadarScanTime
 
 from ..instruments.instruments import PlottableInstrument
 from ..instruments import Position
-from .fleet import Fleet, FleetOld
+from .fleet import Fleet
 
 if TYPE_CHECKING:
     # This import is only for static type checkers, preventing runtime circular imports.
@@ -185,7 +185,7 @@ class AircraftInterface(PlottableInstrument):
         plot_kwargs={},
         plot_trails_kwargs={},
         plot_plane_kwargs={},
-        advection_winds="era5",
+        advection_winds=None,  # use defaults
         **kwargs,
     ):
         kwargs = {"tlen": 3600, "adjust_mps": adjust_mps} | kwargs
@@ -397,7 +397,9 @@ class AircraftInterface(PlottableInstrument):
         if cao is not None:
             dist_limit = 30  # radar range limit in km
 
-            trail_array = self.fleet.get_trails_arr(timestamp, kwargs["tlen"])
+            trail_array = self.fleet.get_trails_arr(
+                timestamp, kwargs["tlen"], winds=kwargs.get("winds", "era5")
+            )
             dists = haversine(
                 trail_array[:, :, 0], trail_array[:, :, 1], cao.lon, cao.lat
             )
