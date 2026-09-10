@@ -184,6 +184,7 @@ class AircraftInterface(PlottableInstrument):
         icao_include: list = None,
         plot_kwargs=None,
         plot_plane_kwargs=None,
+        intersection_kwargs={},
         advection_winds=None,
         plot_baseline=True,
         plot_intersections=None,
@@ -258,7 +259,7 @@ class AircraftInterface(PlottableInstrument):
                 color_icao=color_icao,
                 label_acft=label_acft,
                 plot_kwargs=plot_kwargs,
-                **kwargs,
+                **(kwargs | intersection_kwargs),
             )
 
         if ax is None:

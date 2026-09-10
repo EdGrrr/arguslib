@@ -15,6 +15,8 @@ centre_contrail = True
 campaign_name = "COBALT"
 tlen = 60 * 60
 
+intersection_time_chunk_size = 5  # seconds
+
 radar = Radar.from_config(campaign_name)
 cam = UndistortedCamera.from_config("COBALT", "3-7")
 ai = AutomaticADSBAircraftInterface(radar, winds="era5", wind_filter=10)
@@ -30,7 +32,7 @@ ai.show(time2, ax=ax, trail_kwargs={"icao_include": icao_include})
 
 from csat2.ECMWF import ERA5WindData
 
-wind = ERA5WindData(level="200hPa", res="0.25grid").get_data(
+wind = ERA5WindData(level="250hPa", res="0.25grid").get_data(
     radar.position.lon, radar.position.lat, time1
 )
 
@@ -61,7 +63,10 @@ ai.show(
     tlen=tlen,
     vmax=0,
     vmin=-40,
-    trail_kwargs={"icao_include": icao_include},
+    trail_kwargs={
+        "icao_include": icao_include,
+        "intersection_kwargs": {"chunk_size": intersection_time_chunk_size},
+    },
 )
 ax.set(xlim=(-8, 2) if centre_contrail else (-8, 8), ylim=(6.5, 10.5))
 ax.set_ylabel("Altitude")
@@ -95,7 +100,10 @@ ai.show(
     tlen=tlen,
     vmax=0,
     vmin=-40,
-    trail_kwargs={"icao_include": icao_include},
+    trail_kwargs={
+        "icao_include": icao_include,
+        "intersection_kwargs": {"chunk_size": intersection_time_chunk_size},
+    },
 )
 ax.set(
     xlim=(-4, 6) if centre_contrail else (-8, 8),
