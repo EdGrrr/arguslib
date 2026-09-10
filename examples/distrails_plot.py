@@ -10,6 +10,8 @@ from matplotlib.lines import Line2D
 icao_include = ["a320e5"]  # only show aircraft of interest
 # icao_include = None  # Show all aircraft
 
+centre_contrail = True
+
 campaign_name = "COBALT"
 tlen = 60 * 60
 
@@ -61,7 +63,7 @@ ai.show(
     vmin=-40,
     trail_kwargs={"icao_include": icao_include},
 )
-ax.set(xlim=(-9, 9), ylim=(6, 12))
+ax.set(xlim=(-8, 2) if centre_contrail else (-8, 8), ylim=(6.5, 10.5))
 ax.set_ylabel("Altitude")
 ax.set_xlabel("")
 time1_start, time1_end = radar.get_scan_time_bounds(time1)
@@ -95,7 +97,10 @@ ai.show(
     vmin=-40,
     trail_kwargs={"icao_include": icao_include},
 )
-ax.set(xlim=(-9, 9), ylim=(6, 12))
+ax.set(
+    xlim=(-4, 6) if centre_contrail else (-8, 8),
+    ylim=(6.5, 10.5),
+)
 ax.set_ylabel("Altitude")
 ax.set_xlabel("")
 time2_start, time2_end = radar.get_scan_time_bounds(time2)
