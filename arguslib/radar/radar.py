@@ -222,10 +222,15 @@ class Radar(Instrument, ProvidesRadarScanTime):
 
         ax.set_xlim(xlims)
 
-    def annotate_intersections(self, positions, ages, dt, ax, **kwargs):
-        """Calculates and annotates where a given path intersects the radar scan."""
+    def get_intersections(self, positions, ages, dt, time_bounds=None, xlim=None):
+        """Where a path crosses the radar scan plane.
 
-        dt_start, dt_end = kwargs.pop("time_bounds", (None, None))
+        Returns a list of {"x", "y", "age"} dicts: km along the scan, km
+        altitude, and the age (s) of the path at the crossing. `time_bounds`
+        keeps only crossings at an elevation swept during that time window;
+        `xlim` keeps only those within those x-limits.
+        """
+        dt_start, dt_end = time_bounds or (None, None)
 
         if dt is None:
             raise ValueError("dt must be provided for radar positions")
@@ -287,9 +292,6 @@ class Radar(Instrument, ProvidesRadarScanTime):
             data_to_interpolate={"age": ages},
         )
 
-        # Get the current x-axis limits from the plot before looping
-        xlims = ax.get_xlim()
-
         reverse_elevation = azimuth > 90 and azimuth < 270
         elevs = np.array(
             [np.rad2deg(np.arctan2(point["y"], point["x"])) for point in intersections]
@@ -305,11 +307,26 @@ class Radar(Instrument, ProvidesRadarScanTime):
         else:
             intersections_in_elev_range = intersections
 
-        valid_intersections = [
+        if xlim is None:
+            return intersections_in_elev_range
+        return [
             point
             for point in intersections_in_elev_range
-            if xlims[0] <= point["x"] <= xlims[1]
+            if xlim[0] <= point["x"] <= xlim[1]
         ]
+
+    def annotate_intersections(self, positions, ages, dt, ax, **kwargs):
+        """Calculates and annotates where a given path intersects the radar scan."""
+        time_bounds = kwargs.pop("time_bounds", None)
+        label_ages = kwargs.pop("label_ages", True)
+
+        # scatter autoscales, so keep the limits to restore afterwards.
+        xlims = ax.get_xlim()
+        valid_intersections = self.get_intersections(
+            positions, ages, dt, time_bounds=time_bounds, xlim=xlims
+        )
+        azimuth = self.data_loader.get_pyart_radar(dt).azimuth["data"][0]
+        reverse_elevation = azimuth > 90 and azimuth < 270
 
         intersect_positions = []
         if valid_intersections:
@@ -327,19 +344,21 @@ class Radar(Instrument, ProvidesRadarScanTime):
             ax.scatter(plot_xs, plot_ys, **kwargs)
 
             # Annotate intersections
-            for i in range(len(plot_xs)):
-                ax.text(
-                    plot_xs[i],
-                    plot_ys[i],
-                    labels[i],
-                    fontsize=8,
-                    color="white",
-                    bbox=dict(
-                        facecolor=kwargs.get("color", "magenta"), alpha=0.6, pad=1
-                    ),
-                    ha="left",
-                    va="bottom",
-                )
+            if label_ages:
+                for i in range(len(plot_xs)):
+                    ax.text(
+                        plot_xs[i],
+                        plot_ys[i],
+                        labels[i],
+                        fontsize=8,
+                        color="white",
+                        bbox=dict(
+                            facecolor=kwargs.get("color", "magenta"), alpha=0.6, pad=1
+                        ),
+                        ha="left",
+                        va="bottom",
+                        clip_on=True,
+                    )
 
             elevs = np.rad2deg(np.arctan2(plot_ys, plot_xs))
             elevs = 180 - elevs if reverse_elevation else elevs

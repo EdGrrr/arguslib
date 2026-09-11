@@ -1,6 +1,8 @@
 from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt
 import numpy as np
 import datetime
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
@@ -41,6 +43,9 @@ class AircraftInterface(PlottableInstrument):
     Because it inherits from `PlottableInstrument`, it can be used interchangeably
     wherever a plottable object is expected, allowing for powerful composition
     (e.g., wrapping an `AircraftInterface` inside a `RadarInterface`).
+
+    To follow particular aircraft only, pass `icaos=[...]` (forwarded to
+    `Fleet`) rather than loading and filtering the whole day's traffic.
 
     Attributes:
         camera (PlottableInstrument): The underlying instrument to draw on.
@@ -181,9 +186,9 @@ class AircraftInterface(PlottableInstrument):
         adjust_mps=(0, 0),
         color_icao=True,
         label_acft=False,
-        icao_include: list = None,
         plot_kwargs=None,
         plot_plane_kwargs=None,
+        plot_intersection_kwargs=None,
         intersection_kwargs={},
         advection_winds=None,
         plot_baseline=True,
@@ -229,9 +234,7 @@ class AircraftInterface(PlottableInstrument):
             )
 
         if plot_baseline:
-            dict_positions = self.get_trail_positions(
-                timestamp, icao_include=icao_include, **kwargs
-            )
+            dict_positions = self.get_trail_positions(timestamp, **kwargs)
             for acft, (positions, _ages) in dict_positions.items():
                 positions = adjust_trail_positions(positions, adjust_km)
                 self.camera.annotate_trail(
@@ -255,10 +258,10 @@ class AircraftInterface(PlottableInstrument):
                 dt,
                 ax,
                 adjust_km=adjust_km,
-                icao_include=icao_include,
                 color_icao=color_icao,
                 label_acft=label_acft,
                 plot_kwargs=plot_kwargs,
+                plot_intersection_kwargs=plot_intersection_kwargs,
                 **(kwargs | intersection_kwargs),
             )
 
@@ -299,46 +302,104 @@ class AircraftInterface(PlottableInstrument):
                 if not transformed_boundary.intersects_bbox(artist_bbox):
                     artist.remove()
 
+    def find_intersections(
+        self,
+        dt,
+        xlim=None,
+        adjust_km=(0, 0),
+        chunk_size=10,
+        overlap=4,
+        **kwargs,
+    ):
+        """Scan the radar dwell time in overlapping windows for trail/scan-plane
+        crossings.
+
+        Each window independently asks whether the trail crosses the scan
+        plane at an elevation the beam actually swept through during that
+        window (see `annotate_intersections`). A genuine crossing sits near
+        the middle of the dwell time it's visible for, but a single
+        non-overlapping chunk can miss it if the crossing falls right on a
+        chunk boundary. Windows here overlap `overlap`x (stepping by
+        `chunk_size / overlap` while each window stays `chunk_size` wide),
+        so a real crossing shows up as a run of several consecutive hits
+        instead of possibly none. We then annotate the temporally-central
+        hit of each run, rather than whichever window happened to find it
+        first - that was sensitive to exactly where the chunk boundaries
+        landed relative to the crossing.
+
+        Returns {acft: [(positions, ages, time_bounds), ...]} with one entry
+        per crossing, for crossings within `xlim` (km along the scan) if given.
+        Extra kwargs (tlen, wind error, ...) go to `get_trail_positions`.
+        """
+        # Take the bounds for this dt rather than whatever the last show() set,
+        # so plot_trails can be called on its own (e.g. for extra overlays).
+        if isinstance(self.camera, ProvidesRadarScanTime):
+            self.start_time, self.end_time = self.camera.get_scan_time_bounds(dt)
+        start, end = self.start_time.timestamp(), self.end_time.timestamp()
+        half = chunk_size / 2
+        step = chunk_size / overlap
+        midpoints = np.arange(start + half, end - half, step)
+
+        # Throwaway axes to probe for a crossing without drawing anything;
+        # annotate_intersections filters crossings on the axes' xlim.
+        probe_fig, probe_ax = plt.subplots()
+        probe_ax.set_xlim(xlim if xlim is not None else (-1e4, 1e4))
+
+        hits = defaultdict(list)
+        for i, t in enumerate(
+            tqdm(midpoints, desc="Processing radar intersections in time chunks...")
+        ):
+            ti, tf = t - half, t + half
+            dict_positions = self.get_trail_positions(
+                datetime.datetime.fromtimestamp(t), **kwargs
+            )
+            for acft, (positions, ages) in dict_positions.items():
+                positions = adjust_trail_positions(positions, adjust_km)
+                time_bounds = (
+                    datetime.datetime.fromtimestamp(ti),
+                    datetime.datetime.fromtimestamp(tf),
+                )
+                if self.camera.annotate_intersections(
+                    positions, ages, dt, probe_ax, time_bounds=time_bounds
+                ):
+                    hits[acft].append((i, positions, ages, time_bounds))
+        plt.close(probe_fig)
+
+        crossings = {}
+        for acft, acft_hits in hits.items():
+            # Split into contiguous runs of window indices. Each run is one
+            # genuine crossing (possibly detected by several overlapping
+            # windows); an aircraft could in principle cross the scan plane
+            # more than once, giving more than one run.
+            runs = [[acft_hits[0]]]
+            for hit in acft_hits[1:]:
+                if hit[0] == runs[-1][-1][0] + 1:
+                    runs[-1].append(hit)
+                else:
+                    runs.append([hit])
+            crossings[acft] = [run[len(run) // 2][1:] for run in runs]
+        return crossings
+
     def _plot_intersections(
         self,
         dt,
         ax,
-        adjust_km=(0, 0),
-        icao_include=None,
         color_icao=True,
         label_acft=False,
         plot_kwargs=None,
-        chunk_size=10,
+        plot_intersection_kwargs=None,
         **kwargs,
     ):
         plot_kwargs = plot_kwargs or {}
-        start, end = self.start_time.timestamp(), self.end_time.timestamp()
-        step = chunk_size / 2
-        midpoints = np.arange(start + step, end, step)
-        edges = np.arange(start, end + step, step)
-
-        plotted_icaos = set()
-        for t, ti, tf in tqdm(
-            zip(midpoints, edges[:-2], edges[2:]),
-            total=len(midpoints),
-            desc="Processing radar intersections in time chunks...",
-        ):
-            dict_positions = self.get_trail_positions(
-                datetime.datetime.fromtimestamp(t), icao_include=icao_include, **kwargs
-            )
-            for acft, (positions, ages) in dict_positions.items():
-                if acft in plotted_icaos:
-                    continue
-                positions = adjust_trail_positions(positions, adjust_km)
-                if self.camera.annotate_intersections(
+        crossings = self.find_intersections(dt, xlim=ax.get_xlim(), **kwargs)
+        for acft, acft_crossings in crossings.items():
+            for positions, ages, time_bounds in acft_crossings:
+                self.camera.annotate_intersections(
                     positions,
                     ages,
                     dt,
                     ax,
-                    time_bounds=(
-                        datetime.datetime.fromtimestamp(ti),
-                        datetime.datetime.fromtimestamp(tf),
-                    ),
+                    time_bounds=time_bounds,
                     **(
                         plot_kwargs
                         | {
@@ -347,64 +408,39 @@ class AircraftInterface(PlottableInstrument):
                             "marker": "x",
                             "s": 25,
                         }
+                        | (plot_intersection_kwargs or {})
                     ),
-                ):
-                    plotted_icaos.add(acft)
+                )
 
-    def get_trail_positions(self, timestamp, icao_include=None, **kwargs):
-        trail_latlons = self.get_trails(timestamp, **kwargs)
-        trail_alts_geom = self.fleet.get_data(
-            timestamp,
-            "alt_geom",
-            tlen=kwargs["tlen"],
-        )
+    def get_trail_positions(self, timestamp, **kwargs):
+        kwargs = {"tlen": 3600, "include_time": True} | kwargs
+        trails = self.fleet.get_trails_arr(timestamp, **kwargs)  # lon, lat, age
+        alts_ft = self.fleet.get_data_arr(timestamp, "alt_geom", tlen=kwargs["tlen"])[
+            "alt_geom"
+        ]
+        keep = np.ones(len(trails), dtype=bool)
 
-        # Here we want to filter the trails (if possible) for othly those that pass within 30km of Chilbolton
-        # Using trackerlib
-
+        # Only keep those that pass within 30 km of the radar (if there is one).
         radar = getattr(
             self.camera, "radar", self.camera
         )  # RadarInterface -> .radar, Radar -> itself
-        try:
-            cao = radar.position
-        except AttributeError:
-            cao = None
-
+        cao = getattr(radar, "position", None)
         if cao is not None:
             dist_limit = 30  # radar range limit in km
+            dists = haversine(trails[:, :, 0], trails[:, :, 1], cao.lon, cao.lat)
+            keep = (dists < dist_limit).any(axis=1)
 
-            trail_array = self.fleet.get_trails_arr(
-                timestamp, kwargs["tlen"], winds=kwargs.get("winds", "era5")
-            )
-            dists = haversine(
-                trail_array[:, :, 0], trail_array[:, :, 1], cao.lon, cao.lat
-            )
-            valid_inds = np.where((dists < dist_limit).sum(axis=1) > 0)
-            valid_ids = np.array(self.fleet.get_ids())[valid_inds].tolist()
-
-            if icao_include is not None:
-                icao_include = [i for i in icao_include if i in set(valid_ids)]
-            else:
-                icao_include = valid_ids
-
-        if icao_include is not None:
-            trail_latlons = {icao: trail_latlons[icao] for icao in icao_include}
-
+        ids = self.fleet.get_ids()
         acfts = []
         positions_lists = []
         ages_lists = []
-        for acft in trail_latlons.keys():
-            if (
-                np.isnan(trail_latlons[acft])
-                | (trail_alts_geom[acft]["alt_geom"] < 26000)
-            ).all():
+        for row in np.where(keep)[0]:
+            acft = ids[row]
+            if (np.isnan(trails[row].T) | (alts_ft[row] < 26000)).all():
                 continue
 
-            lons = trail_latlons[acft][0]
-            lats = trail_latlons[acft][1]
-            alts_km = ft_to_km(trail_alts_geom[acft]["alt_geom"])
-            # Get the times array!
-            ages = trail_latlons[acft][2]  # Assuming get_trails returns this
+            lons, lats, ages = trails[row].T
+            alts_km = ft_to_km(alts_ft[row])
 
             current_pos = self.fleet.interpolate_position(acft, timestamp)
 

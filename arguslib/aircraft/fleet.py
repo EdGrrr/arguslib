@@ -2,6 +2,7 @@ from arguslib.misc.met import download_era5_winds
 from arguslib.misc.times import convert_to_london_naive
 from trackerlib.locations import COBALTFlightLocs
 from trackerlib.tracker import ContrailLocsFixed
+import copy
 import numpy as np
 import netCDF4
 import tqdm
@@ -88,6 +89,24 @@ def assign_era5_winds_to_flightlocs(
 #     ERA5_LEVELS = {}
 
 
+def select_aircraft(flightlocs, icaos):
+    """A shallow copy of a COBALTFlightLocs holding only `icaos`, in that order."""
+    ids = flightlocs.get_flightids()
+    missing = [i for i in icaos if i not in ids]
+    if missing:
+        raise KeyError(f"Aircraft not in this day's ADS-B data: {missing}")
+    rows = [ids.index(i) for i in icaos]
+
+    selected = copy.copy(flightlocs)
+    # Every data array is per-aircraft along axis 0, except the shared time axis.
+    selected.data = {
+        k: v if k == "times" else v[rows] for k, v in flightlocs.data.items()
+    }
+    selected.atypes = selected.data["ac_types"].tolist()
+    selected.flightids = selected.data["icao"].tolist()
+    return selected
+
+
 def jsonfloat(value):
     output = float(value)
     if np.isfinite(output):
@@ -98,9 +117,16 @@ def jsonfloat(value):
 
 class Fleet:
     def __init__(
-        self, time_resolution=15, variables=["lon", "lat", "alt_geom"], winds="aircraft"
+        self,
+        time_resolution=15,
+        variables=["lon", "lat", "alt_geom"],
+        winds="aircraft",
+        icaos=None,
     ):
+        """`icaos` restricts the fleet to those aircraft (applied on every
+        load), which is much faster than carrying a whole day's traffic."""
         self.aircraft = {}
+        self.icaos = [icaos] if isinstance(icaos, str) else icaos
         self.variables = variables
         self.flightlocs = None
         self.time_resolution = time_resolution
@@ -161,18 +187,34 @@ class Fleet:
         self.flightlocs = COBALTFlightLocs(
             year, doy, wind_data=True, wind_filter_window=wind_filter
         )
+        if self.icaos is not None:
+            # Before the ERA5 lookup, so that's only done for these aircraft.
+            self.flightlocs = select_aircraft(self.flightlocs, self.icaos)
         if self.winds == "era5":
             assign_era5_winds_to_flightlocs(self.flightlocs, base_date)
 
+        self._build_tracker()
+        self.loaded_file = basename
+
+    def subset(self, icaos):
+        """A new Fleet of just `icaos`, sliced from this loaded one, so the
+        day's ADS-B data and winds aren't read again."""
+        fleet = Fleet(self.time_resolution, self.variables, self.winds, icaos=icaos)
+        fleet.flightlocs = select_aircraft(self.flightlocs, fleet.icaos)
+        fleet._build_tracker()
+        fleet.loaded_file = self.loaded_file
+        return fleet
+
+    def _build_tracker(self):
+        fl = self.flightlocs
         self.flight_tracker = ContrailLocsFixed(
-            self.flightlocs,
+            fl,
             winddata=None,
-            init_time=csat2.misc.time.ydh_to_datetime(year, doy, 12),
+            init_time=csat2.misc.time.ydh_to_datetime(fl.year, fl.doy, 12),
             intstep=datetime.timedelta(seconds=self.time_resolution),
             trail_length_hours=2,
         )
-        self.loaded_file = basename
-        if len(self.flightlocs) > 0:
+        if len(fl) > 0:
             self.aircraft = True
 
     def _trim_array(self, data, tlen):
@@ -233,7 +275,7 @@ class Fleet:
         return data
 
     def get_tracks_arr(self, dtime, tlen=2 * 60 * 60, include_time=False):
-        self.flight_tracker.increment_until(dtime)
+        self._advance(dtime)
         if include_time:
             tracks = self._trim_array(
                 self._add_time(self.flight_tracker.get_emission_pos()), tlen
@@ -258,7 +300,16 @@ class Fleet:
         include_alt=False,
         winds=None,  # use defaults
         adjust_mps=(0, 0),
+        wind_scale=1.0,
+        wind_rotate_deg=0.0,
     ):
+        """Advected trail positions.
+
+        `adjust_mps`, `wind_scale` and `wind_rotate_deg` perturb the advecting
+        wind as w' = wind_scale * R(wind_rotate_deg) @ w + adjust_mps, e.g. to
+        scope the effect of an error in the ERA5 winds. Positive
+        `wind_rotate_deg` veers the wind (clockwise, like a compass bearing).
+        """
         if winds == "none":
             return self.get_tracks_arr(dtime, tlen, include_time=include_time)
         if winds is not None and winds != self.winds:
@@ -267,21 +318,50 @@ class Fleet:
                 f"the tracker is constructed, so call set_winds({winds!r}) before "
                 f"requesting trails."
             )
-        self.flight_tracker.increment_until(dtime)
+        self._advance(dtime)
+        trail_pos = self.flight_tracker.get_trail_pos()
+        if tuple(adjust_mps) != (0, 0) or wind_scale != 1 or wind_rotate_deg != 0:
+            trail_pos = self._perturb_trails(
+                trail_pos, dtime, adjust_mps, wind_scale, wind_rotate_deg
+            )
         if include_alt:
             end_val = 3
         else:
             end_val = 2
         if include_time:
-            trails = self._trim_array(
-                self._add_time(self.flight_tracker.get_trail_pos()[:, :, :end_val]),
-                tlen,
-            )
+            trails = self._trim_array(self._add_time(trail_pos[:, :, :end_val]), tlen)
         else:
-            trails = self._trim_array(
-                self.flight_tracker.get_trail_pos()[:, :, :end_val], tlen
-            )
+            trails = self._trim_array(trail_pos[:, :, :end_val], tlen)
         return trails
+
+    def _advance(self, dtime):
+        # The tracker recomputes every trail from scratch on each call and the
+        # flight data it reads never changes, so skip repeat calls for a dtime.
+        if self.flight_tracker.integration_time != dtime:
+            self.flight_tracker.increment_until(dtime)
+
+    def _perturb_trails(
+        self, trail_pos, dtime, adjust_mps, wind_scale, wind_rotate_deg
+    ):
+        """Shift the tracker's trails to match a perturbed wind.
+
+        TrackerLocsFixed displaces each point by (wind at emission) * age, so
+        the displacement is linear in the wind and the perturbation is just an
+        extra (w' - w) * age, with no need to rebuild the tracker.
+        """
+        tlen = self.flight_tracker.trail_length_hours * 3600
+        u = self.flightlocs.get_data_time(dtime, "wind_u", tlen)["wind_u"]
+        v = self.flightlocs.get_data_time(dtime, "wind_v", tlen)["wind_v"]
+        c, s = np.cos(np.deg2rad(wind_rotate_deg)), np.sin(np.deg2rad(wind_rotate_deg))
+        du = wind_scale * (c * u + s * v) + adjust_mps[0] - u
+        dv = wind_scale * (-s * u + c * v) + adjust_mps[1] - v
+
+        # Same ages as the tracker uses (intstep == time_resolution).
+        ages = np.arange(trail_pos.shape[1])[::-1] * self.time_resolution
+        trail_pos[:, :, 0], trail_pos[:, :, 1] = geo.xy_offset_to_ll(
+            trail_pos[:, :, 0], trail_pos[:, :, 1], du * ages / 1000, dv * ages / 1000
+        )
+        return trail_pos
 
     def _add_time(self, data):
         outdata = np.concat(
@@ -302,9 +382,8 @@ class Fleet:
         return outdata
 
     def get_data_arr(self, dtime, vname, tlen=2 * 60 * 60):
-        self.flight_tracker.increment_until(dtime)
-        data = self.flightlocs.get_data_time(dtime, vname, tlen)
-        return data
+        # Straight from the flight data; doesn't need the tracker advanced.
+        return self.flightlocs.get_data_time(dtime, vname, tlen)
 
     def assign_era5_winds(self, _download_attempted_this_call=False):
         # Get the 3D ERA5 winds for this array

@@ -133,9 +133,14 @@ class CameraArray(PlottableInstrument):
                 constrained_layout=True,
             )
         else:
-            if isinstance(ax, np.ndarray):
-                axes = ax
+            if (
+                isinstance(ax, np.ndarray)
+                or isinstance(ax, list)
+                or isinstance(ax, tuple)
+            ):
+                axes = np.array(ax).reshape(self.layout_shape[1], self.layout_shape[0])
             else:
+                breakpoint()
                 return self.show(dt, replace_ax=ax, label_cameras=label_cameras)
 
         fail_counts = 0
